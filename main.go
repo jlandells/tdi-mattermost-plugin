@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mattermost/mattermost/server/public/model"
-	"github.com/mattermost/mattermost/server/public/plugin"
+	"github.com/mattermost/mattermost-server/v6/model"
+	"github.com/mattermost/mattermost-server/v6/plugin"
 )
 
 // Plugin implements the interface expected by the Mattermost server to communicate between the server and plugin processes.
@@ -561,17 +561,18 @@ func (p *Plugin) FileWillBeUploaded(c *plugin.Context, info *model.FileInfo, fil
 	var channel *model.Channel
 	var channelName, channelHeader string
 	if info.ChannelId != "" {
-		channel, err = p.API.GetChannel(info.ChannelId)
-		if err == nil {
+		var channelErr *model.AppError
+		channel, channelErr = p.API.GetChannel(info.ChannelId)
+		if channelErr == nil {
 			channelName = channel.Name
 			channelHeader = channel.Header
 		}
 	}
 
 	// Read file data for policy check (and to compute hash)
-	fileData, err := io.ReadAll(file)
-	if err != nil {
-		p.API.LogError("Failed to read file", "error", err.Error())
+	fileData, readErr := io.ReadAll(file)
+	if readErr != nil {
+		p.API.LogError("Failed to read file", "error", readErr.Error())
 		return nil, "Failed to process file"
 	}
 
@@ -608,9 +609,9 @@ func (p *Plugin) FileWillBeUploaded(c *plugin.Context, info *model.FileInfo, fil
 	}
 
 	// Write file to output
-	_, err = io.Copy(output, bytes.NewReader(fileData))
-	if err != nil {
-		p.API.LogError("Failed to write file", "error", err.Error())
+	_, writeErr := io.Copy(output, bytes.NewReader(fileData))
+	if writeErr != nil {
+		p.API.LogError("Failed to write file", "error", writeErr.Error())
 		return nil, "Failed to process file"
 	}
 
