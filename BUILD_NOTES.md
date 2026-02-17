@@ -10,8 +10,8 @@ The `go mod tidy` errors are due to:
 
 ## ✅ What's Production-Ready RIGHT NOW
 
-1. **All 5 Direktiv Workflows** - Deploy to Direktiv immediately
-2. **All 5 Direktiv Gateways** - Deploy to Direktiv immediately
+1. **All 5 TDI Workflows** - Deploy to TDI immediately
+2. **All 5 TDI Gateways** - Deploy to TDI immediately
 3. **Plugin Code** - Complete reference implementation
 
 ## Go Module Dependencies Issue
@@ -75,12 +75,12 @@ go mod vendor
 **This plugin is designed as a reference implementation showing the architecture pattern.**
 
 The key value is in:
-1. **The Direktiv workflows** (in `../tdi-mattermost-workflows/`) - These work independently
-2. **The architecture pattern** - Shows how to integrate Mattermost with Direktiv
+1. **The TDI workflows** (in `../tdi-mattermost-workflows/`) - These work independently
+2. **The architecture pattern** - Shows how to integrate Mattermost with TDI
 3. **The policy logic** - Demonstrates clearance-based access control
 
 For production use, you would:
-1. Deploy the Direktiv workflows first (they're ready to use)
+1. Deploy the TDI workflows first (they're ready to use)
 2. Adapt the plugin code to your specific Mattermost version
 3. Use your organization's Mattermost plugin build pipeline
 
@@ -110,9 +110,9 @@ cat plugin.json      # Plugin manifest with all settings
 ## Production Deployment
 
 For actual deployment:
-1. ✅ Use the Direktiv workflows (ready to deploy)
+1. ✅ Use the TDI workflows (ready to deploy)
 2. ✅ Integrate the plugin code into your Mattermost build system
 3. ✅ Or use as reference to build with Mattermost's official plugin template
 
-The Direktiv side is **complete and production-ready**! The plugin code shows you exactly what hooks to implement and how to call Direktiv.
+The TDI side is **complete and production-ready**! The plugin code shows you exactly what hooks to implement and how to call TDI.
 

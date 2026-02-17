@@ -18,9 +18,9 @@ import (
 // If you add non-reference types to your configuration struct, be sure to rewrite Clone as a deep
 // copy appropriate for your types.
 type configuration struct {
-	DirektivURL                 string
-	DirektivNamespace           string
-	DirektivAPIKey              string
+	TDIURL                      string
+	TDINamespace                string
+	TDIAPIKey                   string
 	EnableMessagePolicy         bool
 	EnableChannelJoinPolicy     bool
 	EnableMessageEditPolicy     bool
@@ -98,12 +98,12 @@ func (p *Plugin) OnConfigurationChange() error {
 
 // validateConfiguration validates the configuration and returns an error if it is invalid.
 func (p *Plugin) validateConfiguration(configuration *configuration) error {
-	if configuration.DirektivURL == "" {
-		return errors.New("DirektivURL is required")
+	if configuration.TDIURL == "" {
+		return errors.New("TDIURL is required")
 	}
 
-	if configuration.DirektivNamespace == "" {
-		return errors.New("DirektivNamespace is required")
+	if configuration.TDINamespace == "" {
+		return errors.New("TDINamespace is required")
 	}
 
 	if configuration.PolicyTimeout <= 0 {

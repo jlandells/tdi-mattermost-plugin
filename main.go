@@ -25,7 +25,7 @@ type Plugin struct {
 	httpClient        *http.Client
 }
 
-// PolicyRequest represents a request sent to Direktiv for policy decision
+// PolicyRequest represents a request sent to TDI for policy decision
 type PolicyRequest struct {
 	UserID         string                 `json:"user_id"`
 	Username       string                 `json:"username"`
@@ -40,7 +40,7 @@ type PolicyRequest struct {
 	Action         string                 `json:"action"` // "message" or "channel_join"
 }
 
-// PolicyResponse represents the response from Direktiv
+// PolicyResponse represents the response from TDI
 type PolicyResponse struct {
 	Status string                 `json:"status"`
 	Action string                 `json:"action"` // "continue" or "reject"
@@ -57,8 +57,8 @@ func (p *Plugin) OnActivate() error {
 	}
 
 	p.API.LogInfo("Mattermost Policy Plugin activated",
-		"direktiv_url", config.DirektivURL,
-		"namespace", config.DirektivNamespace,
+		"tdi_url", config.TDIURL,
+		"namespace", config.TDINamespace,
 		"message_policy_enabled", config.EnableMessagePolicy,
 		"channel_join_policy_enabled", config.EnableChannelJoinPolicy,
 	)
@@ -227,26 +227,26 @@ func (p *Plugin) UserHasJoinedChannel(c *plugin.Context, channelMember *model.Ch
 	}
 }
 
-// checkPolicy calls Direktiv to check if an action is allowed
+// checkPolicy calls TDI to check if an action is allowed
 func (p *Plugin) checkPolicy(req PolicyRequest, policyType string) (bool, string) {
 	config := p.getConfiguration()
 
 	// Validate configuration
-	if config.DirektivURL == "" || config.DirektivNamespace == "" {
-		p.API.LogError("Direktiv not configured - denying by default (fail-secure)")
+	if config.TDIURL == "" || config.TDINamespace == "" {
+		p.API.LogError("TDI not configured - denying by default (fail-secure)")
 		return false, "Policy service not configured"
 	}
 
-	// Build Direktiv URL
+	// Build TDI URL
 	var endpoint string
 	if policyType == "message" {
 		endpoint = fmt.Sprintf("%s/ns/%s/policy/v1/message/check",
-			strings.TrimSuffix(config.DirektivURL, "/"),
-			config.DirektivNamespace)
+			strings.TrimSuffix(config.TDIURL, "/"),
+			config.TDINamespace)
 	} else {
 		endpoint = fmt.Sprintf("%s/ns/%s/policy/v1/channel/join",
-			strings.TrimSuffix(config.DirektivURL, "/"),
-			config.DirektivNamespace)
+			strings.TrimSuffix(config.TDIURL, "/"),
+			config.TDINamespace)
 	}
 
 	// Marshal request
@@ -271,14 +271,14 @@ func (p *Plugin) checkPolicy(req PolicyRequest, policyType string) (bool, string
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	if config.DirektivAPIKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+config.DirektivAPIKey)
+	if config.TDIAPIKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+config.TDIAPIKey)
 	}
 
 	// Send request
 	resp, err := p.httpClient.Do(httpReq)
 	if err != nil {
-		p.API.LogError("Failed to contact Direktiv", "error", err.Error(), "endpoint", endpoint)
+		p.API.LogError("Failed to contact TDI", "error", err.Error(), "endpoint", endpoint)
 		return false, "Policy service unavailable"
 	}
 	defer resp.Body.Close()
@@ -787,15 +787,15 @@ func (p *Plugin) checkGenericPolicy(req map[string]interface{}, policyPath strin
 	config := p.getConfiguration()
 
 	// Validate configuration
-	if config.DirektivURL == "" || config.DirektivNamespace == "" {
-		p.API.LogError("Direktiv not configured - denying by default (fail-secure)")
+	if config.TDIURL == "" || config.TDINamespace == "" {
+		p.API.LogError("TDI not configured - denying by default (fail-secure)")
 		return false, "Policy service not configured"
 	}
 
-	// Build Direktiv URL
+	// Build TDI URL
 	endpoint := fmt.Sprintf("%s/ns/%s/policy/v1/%s",
-		strings.TrimSuffix(config.DirektivURL, "/"),
-		config.DirektivNamespace,
+		strings.TrimSuffix(config.TDIURL, "/"),
+		config.TDINamespace,
 		policyPath)
 
 	// Marshal request
@@ -820,14 +820,14 @@ func (p *Plugin) checkGenericPolicy(req map[string]interface{}, policyPath strin
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	if config.DirektivAPIKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+config.DirektivAPIKey)
+	if config.TDIAPIKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+config.TDIAPIKey)
 	}
 
 	// Send request
 	resp, err := p.httpClient.Do(httpReq)
 	if err != nil {
-		p.API.LogError("Failed to contact Direktiv", "error", err.Error(), "endpoint", endpoint)
+		p.API.LogError("Failed to contact TDI", "error", err.Error(), "endpoint", endpoint)
 		return false, "Policy service unavailable"
 	}
 	defer resp.Body.Close()

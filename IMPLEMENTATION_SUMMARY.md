@@ -25,14 +25,14 @@ Successfully added **5 new high-value policy hooks** to the Mattermost Policy Pl
 - ✅ `plugin/configuration.go` - Added 5 config fields
 - ✅ `plugin/plugin.json` - Added 5 settings (disabled by default)
 
-### Direktiv Gateways (5 new)
+### TDI Gateways (5 new)
 - ✅ `gateways/message-edit-policy.yaml`
 - ✅ `gateways/message-delete-policy.yaml`
 - ✅ `gateways/file-upload-policy.yaml`
 - ✅ `gateways/login-policy.yaml`
 - ✅ `gateways/channel-creation-policy.yaml`
 
-### Direktiv Workflows (5 new)
+### TDI Workflows (5 new)
 - ✅ `workflows/message-edit-policy.yaml`
 - ✅ `workflows/message-delete-policy.yaml`
 - ✅ `workflows/file-upload-policy.yaml`
@@ -122,24 +122,24 @@ System Console → Plugins → Mattermost Policy Plugin
 
 ---
 
-## Direktiv Deployment
+## TDI Deployment
 
-Deploy all gateways and workflows to Direktiv:
+Deploy all gateways and workflows to TDI:
 
 ```bash
 # Deploy gateways
-direktiv gateway create mattermost-policies message-edit gateways/message-edit-policy.yaml
-direktiv gateway create mattermost-policies message-delete gateways/message-delete-policy.yaml
-direktiv gateway create mattermost-policies file-upload gateways/file-upload-policy.yaml
-direktiv gateway create mattermost-policies login gateways/login-policy.yaml
-direktiv gateway create mattermost-policies channel-create gateways/channel-creation-policy.yaml
+tdi gateway create mattermost-policies message-edit gateways/message-edit-policy.yaml
+tdi gateway create mattermost-policies message-delete gateways/message-delete-policy.yaml
+tdi gateway create mattermost-policies file-upload gateways/file-upload-policy.yaml
+tdi gateway create mattermost-policies login gateways/login-policy.yaml
+tdi gateway create mattermost-policies channel-create gateways/channel-creation-policy.yaml
 
 # Deploy workflows
-direktiv workflow create mattermost-policies message-edit workflows/message-edit-policy.yaml
-direktiv workflow create mattermost-policies message-delete workflows/message-delete-policy.yaml
-direktiv workflow create mattermost-policies file-upload workflows/file-upload-policy.yaml
-direktiv workflow create mattermost-policies login workflows/login-policy.yaml
-direktiv workflow create mattermost-policies channel-create workflows/channel-creation-policy.yaml
+tdi workflow create mattermost-policies message-edit workflows/message-edit-policy.yaml
+tdi workflow create mattermost-policies message-delete workflows/message-delete-policy.yaml
+tdi workflow create mattermost-policies file-upload workflows/file-upload-policy.yaml
+tdi workflow create mattermost-policies login workflows/login-policy.yaml
+tdi workflow create mattermost-policies channel-create workflows/channel-creation-policy.yaml
 ```
 
 ---
@@ -169,7 +169,7 @@ direktiv workflow create mattermost-policies channel-create workflows/channel-cr
 ## Architecture Pattern (Same as Pexip)
 
 ```
-User Action → Plugin Hook → HTTP POST → Direktiv Gateway 
+User Action → Plugin Hook → HTTP POST → TDI Gateway 
 → Workflow → Policy Decision → Allow/Deny
 ```
 
@@ -192,7 +192,7 @@ Just like your Pexip integration!
 
 ## What's Next
 
-1. Deploy gateways/workflows to Direktiv
+1. Deploy gateways/workflows to TDI
 2. Build plugin: `cd plugin && make bundle`
 3. Install plugin in Mattermost
 4. Test each policy individually

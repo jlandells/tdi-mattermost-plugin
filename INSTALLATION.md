@@ -1,42 +1,42 @@
 # Installation Guide
 
-This guide walks you through installing and configuring the Mattermost Policy Plugin with Direktiv.
+This guide walks you through installing and configuring the Mattermost Policy Plugin with TDI.
 
 ## Prerequisites
 
 Before starting, ensure you have:
 
 - **Mattermost Server 9.0+** installed and running
-- **Direktiv instance** accessible from your Mattermost server
+- **TDI instance** accessible from your Mattermost server
 - **System Administrator** access to Mattermost
 - **Go 1.21+** installed (for building the plugin)
-- **Direct network access** from Mattermost server to Direktiv
+- **Direct network access** from Mattermost server to TDI
 
-## Step 1: Deploy Direktiv Components
+## Step 1: Deploy TDI Components
 
 ### 1.1 Create Namespace
 
-Create a namespace in Direktiv for your Mattermost policies:
+Create a namespace in TDI for your Mattermost policies:
 
 ```bash
-# Using Direktiv CLI or UI
-direktiv namespace create mattermost-policies
+# Using TDI CLI or UI
+tdi namespace create mattermost-policies
 ```
 
 ### 1.2 Deploy Workflows
 
-Upload the workflow files to your Direktiv namespace:
+Upload the workflow files to your TDI namespace:
 
 ```bash
 # Navigate to the workflows directory
 cd workflows/
 
-# Upload via Direktiv UI or CLI
+# Upload via TDI UI or CLI
 # File: message-policy.yaml → /workflows/message-policy.yaml
 # File: channel-join-policy.yaml → /workflows/channel-join-policy.yaml
 ```
 
-**Via Direktiv UI:**
+**Via TDI UI:**
 1. Navigate to your namespace
 2. Go to Workflows section
 3. Create new workflow
@@ -51,25 +51,25 @@ Upload the gateway definitions:
 # Navigate to the gateways directory
 cd gateways/
 
-# Upload via Direktiv UI or CLI
+# Upload via TDI UI or CLI
 # File: message-policy.yaml → /gateways/message-policy.yaml
 # File: channel-join-policy.yaml → /gateways/channel-join-policy.yaml
 ```
 
-**Via Direktiv UI:**
+**Via TDI UI:**
 1. Navigate to your namespace
 2. Go to Gateway/Endpoints section
 3. Create new endpoint
 4. Copy contents of each YAML file
 5. Save and activate
 
-### 1.4 Test Direktiv Endpoints
+### 1.4 Test TDI Endpoints
 
 Verify the endpoints are accessible:
 
 ```bash
 # Test message policy endpoint
-curl -X POST https://your-direktiv-instance.com/ns/mattermost-policies/policy/v1/message/check \
+curl -X POST https://your-tdi-instance.com/ns/mattermost-policies/policy/v1/message/check \
   -H "Content-Type: application/json" \
   -d @data/sample-message-request.json
 
@@ -81,7 +81,7 @@ curl -X POST https://your-direktiv-instance.com/ns/mattermost-policies/policy/v1
 # }
 
 # Test channel join policy endpoint
-curl -X POST https://your-direktiv-instance.com/ns/mattermost-policies/policy/v1/channel/join \
+curl -X POST https://your-tdi-instance.com/ns/mattermost-policies/policy/v1/channel/join \
   -H "Content-Type: application/json" \
   -d @data/sample-channel-join-request.json
 ```
@@ -141,8 +141,8 @@ make bundle
 
 | Setting | Value | Description |
 |---------|-------|-------------|
-| **Direktiv Base URL** | `https://your-direktiv-instance.com` | Your Direktiv instance URL (no trailing slash) |
-| **Direktiv Namespace** | `mattermost-policies` | The namespace containing your workflows |
+| **TDI Base URL** | `https://your-tdi-instance.com` | Your TDI instance URL (no trailing slash) |
+| **TDI Namespace** | `mattermost-policies` | The namespace containing your workflows |
 | **Enable Message Policy Checks** | `true` | Enable message policy enforcement |
 | **Enable Channel Join Policy Checks** | `true` | Enable channel join policy enforcement |
 | **Policy Request Timeout** | `5` | Seconds to wait for policy response |
@@ -151,7 +151,7 @@ make bundle
 
 ### 4.2 Optional Configuration
 
-**Direktiv API Key** (if your Direktiv instance requires authentication):
+**TDI API Key** (if your TDI instance requires authentication):
 ```
 your-api-key-here
 ```
@@ -186,7 +186,7 @@ View Mattermost logs to confirm plugin activation:
 tail -f /opt/mattermost/logs/mattermost.log | grep "mattermost-policy-plugin"
 
 # Expected output:
-# [INFO] Mattermost Policy Plugin activated direktiv_url=https://... namespace=mattermost-policies
+# [INFO] Mattermost Policy Plugin activated tdi_url=https://... namespace=mattermost-policies
 ```
 
 ### 5.2 Test Message Policy
@@ -259,16 +259,16 @@ tail -f /opt/mattermost/logs/mattermost.log
 
 ### Policy Checks Always Deny
 
-**Verify Direktiv connectivity:**
+**Verify TDI connectivity:**
 ```bash
 # From Mattermost server
-curl -v https://your-direktiv-instance.com/ns/mattermost-policies/policy/v1/message/check
+curl -v https://your-tdi-instance.com/ns/mattermost-policies/policy/v1/message/check
 ```
 
 **Common issues:**
-- Direktiv URL incorrect or unreachable
+- TDI URL incorrect or unreachable
 - Network firewall blocking requests
-- Direktiv namespace doesn't exist
+- TDI namespace doesn't exist
 - Workflows not deployed
 
 ### Policies Not Evaluating Correctly
@@ -279,7 +279,7 @@ curl -v https://your-direktiv-instance.com/ns/mattermost-policies/policy/v1/mess
 3. Review logs for policy requests and responses
 
 **Check workflow logic:**
-1. Test workflows directly in Direktiv UI
+1. Test workflows directly in TDI UI
 2. Verify jq expressions in workflow conditions
 3. Check user attribute values
 
@@ -287,7 +287,7 @@ curl -v https://your-direktiv-instance.com/ns/mattermost-policies/policy/v1/mess
 
 **Increase timeout:**
 1. Increase **Policy Request Timeout** to 10 seconds
-2. Monitor Direktiv workflow execution times
+2. Monitor TDI workflow execution times
 
 **Optimize workflows:**
 1. Remove unnecessary logging
@@ -296,13 +296,13 @@ curl -v https://your-direktiv-instance.com/ns/mattermost-policies/policy/v1/mess
 
 ## Security Best Practices
 
-1. **Always use HTTPS** for Direktiv communication
+1. **Always use HTTPS** for TDI communication
 2. **Enable TLS certificate verification** (don't skip in production)
-3. **Use API keys** for Direktiv authentication
+3. **Use API keys** for TDI authentication
 4. **Rotate API keys** regularly
-5. **Audit policy decisions** via Direktiv logging
+5. **Audit policy decisions** via TDI logging
 6. **Test policies thoroughly** before production deployment
-7. **Have a fallback plan** if Direktiv becomes unavailable
+7. **Have a fallback plan** if TDI becomes unavailable
 
 ## Updating the Plugin
 
@@ -324,9 +324,9 @@ To remove the plugin:
 4. Click **Remove**
 5. Confirm removal
 
-To remove Direktiv components:
+To remove TDI components:
 
-1. Delete workflows from Direktiv namespace
+1. Delete workflows from TDI namespace
 2. Delete gateway endpoints
 3. Optionally delete the namespace
 
@@ -335,8 +335,8 @@ To remove Direktiv components:
 For issues or questions:
 
 - Check plugin logs for errors
-- Test Direktiv workflows independently
-- Review Direktiv documentation at https://docs.direktiv.io/
+- Test TDI workflows independently
+- Review TDI documentation at https://docs.tdi.io/
 - Contact your security team for policy-related questions
 
 ## Next Steps

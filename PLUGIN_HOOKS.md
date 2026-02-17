@@ -1,6 +1,6 @@
 # Mattermost Plugin Hooks - Complete Reference
 
-This document lists all the hooks available in Mattermost plugins that can be used to integrate with Direktiv for policy enforcement.
+This document lists all the hooks available in Mattermost plugins that can be used to integrate with TDI for policy enforcement.
 
 ## Server Hooks Available
 
@@ -55,7 +55,7 @@ func (p *Plugin) MessageWillBeUpdated(c *plugin.Context, newPost, oldPost *model
 }
 ```
 
-**Direktiv Workflow:** `message-edit-policy.yaml`
+**TDI Workflow:** `message-edit-policy.yaml`
 
 #### 4. MessageWillBeDeleted
 **Signature:** `MessageWillBeDeleted(c *plugin.Context, post *model.Post) (*model.Post, string)`
@@ -110,7 +110,7 @@ func (p *Plugin) FileWillBeUploaded(c *plugin.Context, info *model.FileInfo, fil
 }
 ```
 
-**Direktiv Workflow:** `file-upload-policy.yaml`
+**TDI Workflow:** `file-upload-policy.yaml`
 
 #### 6. UserWillLogIn
 **Signature:** `UserWillLogIn(c *plugin.Context, user *model.User) string`
@@ -370,7 +370,7 @@ func (p *Plugin) FileWillBeUploaded(c *plugin.Context, info *model.FileInfo, fil
 }
 ```
 
-### Direktiv Gateway (gateways/file-upload-policy.yaml)
+### TDI Gateway (gateways/file-upload-policy.yaml)
 ```yaml
 x-direktiv-api: endpoint/v2
 x-direktiv-config:
@@ -415,7 +415,7 @@ post:
               type: object
 ```
 
-### Direktiv Workflow (workflows/file-upload-policy.yaml)
+### TDI Workflow (workflows/file-upload-policy.yaml)
 ```yaml
 direktiv_api: workflow/v1
 
@@ -548,11 +548,11 @@ func (p *Plugin) MessageWillBeUpdated(c *plugin.Context, newPost, oldPost *model
 }
 ```
 
-### Step 3: Create Direktiv Gateway
+### Step 3: Create TDI Gateway
 
 Create `gateways/message-edit-policy.yaml` following the same pattern as existing gateways.
 
-### Step 4: Create Direktiv Workflow
+### Step 4: Create TDI Workflow
 
 Create `workflows/message-edit-policy.yaml` with your policy logic.
 

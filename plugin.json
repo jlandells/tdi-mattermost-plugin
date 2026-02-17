@@ -1,7 +1,7 @@
 {
   "id": "com.archtis.mattermost-policy-plugin",
-  "name": "Mattermost Policy Plugin",
-  "description": "Enforces external policy decisions via Direktiv for message and channel access control",
+  "name": "TDI Mattermost Policy Plugin",
+  "description": "Enforces external policy decisions via TDI for message and channel access control",
   "version": "1.0.0",
   "min_server_version": "9.0.0",
   "server": {
@@ -15,30 +15,30 @@
     "executable": ""
   },
   "settings_schema": {
-    "header": "Configure the Mattermost Policy Plugin to integrate with Direktiv for external policy enforcement.",
+    "header": "Configure the Mattermost Policy Plugin to integrate with TDI for external policy enforcement.",
     "footer": "For more information, see the plugin documentation.",
     "settings": [
       {
-        "key": "DirektivURL",
-        "display_name": "Direktiv Base URL",
+        "key": "TDIURL",
+        "display_name": "TDI Base URL",
         "type": "text",
-        "help_text": "Base URL for your Direktiv instance (e.g., https://direktiv.example.com)",
-        "placeholder": "https://direktiv.example.com",
+        "help_text": "Base URL for your TDI instance (e.g., https://tdi.example.com)",
+        "placeholder": "https://tdi.example.com",
         "default": ""
       },
       {
-        "key": "DirektivNamespace",
-        "display_name": "Direktiv Namespace",
+        "key": "TDINamespace",
+        "display_name": "TDI Namespace",
         "type": "text",
-        "help_text": "Namespace in Direktiv containing the policy workflows",
+        "help_text": "Namespace in TDI containing the policy workflows",
         "placeholder": "mattermost-policies",
         "default": "mattermost-policies"
       },
       {
-        "key": "DirektivAPIKey",
-        "display_name": "Direktiv API Key",
+        "key": "TDIAPIKey",
+        "display_name": "TDI API Key",
         "type": "text",
-        "help_text": "API key for authenticating with Direktiv (optional)",
+        "help_text": "API key for authenticating with TDI (optional)",
         "placeholder": "",
         "default": ""
       },
