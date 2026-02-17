@@ -26,14 +26,15 @@ build-windows:
 	GOOS=windows GOARCH=amd64 go build -o dist/plugin-windows-amd64.exe .
 
 ## Bundle the plugin for distribution
+## Mattermost expects plugin.json at the ROOT of the extracted archive (no top-level folder)
 .PHONY: bundle
 bundle: build
 	@echo "Creating plugin bundle..."
-	mkdir -p dist/$(PLUGIN_ID)
-	mkdir -p dist/$(PLUGIN_ID)/server/dist
-	cp plugin.json dist/$(PLUGIN_ID)/
-	cp dist/plugin-* dist/$(PLUGIN_ID)/server/dist/
-	cd dist && tar -czf $(BUNDLE_NAME) $(PLUGIN_ID)
+	rm -rf dist/bundle
+	mkdir -p dist/bundle/server/dist
+	cp plugin.json dist/bundle/
+	cp dist/plugin-* dist/bundle/server/dist/
+	cd dist/bundle && tar -czf ../$(BUNDLE_NAME) .
 	@echo "Plugin bundle created: dist/$(BUNDLE_NAME)"
 
 ## Run tests
