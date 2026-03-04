@@ -2,7 +2,7 @@
   "id": "com.archtis.mattermost-policy-plugin",
   "name": "TDI Mattermost Policy Plugin",
   "description": "Enforces external policy decisions via TDI for message and channel access control",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "min_server_version": "9.0.0",
   "server": {
     "executables": {
@@ -92,6 +92,55 @@
         "default": false
       },
       {
+        "key": "EnableReactionPolicy",
+        "display_name": "Enable Reaction Policy Checks",
+        "type": "bool",
+        "help_text": "When enabled, emoji reactions will be checked against the policy",
+        "default": false
+      },
+      {
+        "key": "EnableUserCreatedPolicy",
+        "display_name": "Enable User Created Policy (audit)",
+        "type": "bool",
+        "help_text": "When enabled, new user creation is reported to TDI for audit or onboarding",
+        "default": false
+      },
+      {
+        "key": "EnableTeamJoinPolicy",
+        "display_name": "Enable Team Join Policy Checks",
+        "type": "bool",
+        "help_text": "When enabled, users joining teams will be checked against the policy",
+        "default": false
+      },
+      {
+        "key": "EnableUserLeftTeamPolicy",
+        "display_name": "Enable User Left Team Policy (audit)",
+        "type": "bool",
+        "help_text": "When enabled, users leaving teams are reported to TDI for audit",
+        "default": false
+      },
+      {
+        "key": "EnableUserLeftChannelPolicy",
+        "display_name": "Enable User Left Channel Policy (audit)",
+        "type": "bool",
+        "help_text": "When enabled, users leaving channels are reported to TDI for audit",
+        "default": false
+      },
+      {
+        "key": "EnableChannelDeletedPolicy",
+        "display_name": "Enable Channel Deleted Policy (audit)",
+        "type": "bool",
+        "help_text": "When enabled, channel deletions are reported to TDI for audit",
+        "default": false
+      },
+      {
+        "key": "EnableTeamCreatedPolicy",
+        "display_name": "Enable Team Created Policy (audit)",
+        "type": "bool",
+        "help_text": "When enabled, team creation is reported to TDI for audit",
+        "default": false
+      },
+      {
         "key": "PolicyTimeout",
         "display_name": "Policy Request Timeout (seconds)",
         "type": "number",
@@ -117,8 +166,8 @@
         "key": "UserAttributeMapping",
         "display_name": "User Attribute Mapping (JSON)",
         "type": "longtext",
-        "help_text": "JSON mapping of Mattermost user fields to policy attributes",
-        "placeholder": "{\"clearance\": \"CustomAttribute1\", \"department\": \"CustomAttribute2\"}",
+        "help_text": "Map policy attribute names to Mattermost/LDAP fields. Supports: built-in (first_name, last_name, nickname, position), user.Props keys, or LDAP attribute names for LDAP users. Custom profile attributes (SecurityClearance, Nationality, etc.) from Enterprise System properties are always included by field name.",
+        "placeholder": "{\"clearance\": \"employeeClearance\", \"department\": \"department\"}",
         "default": "{}"
       }
     ]

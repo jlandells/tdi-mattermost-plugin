@@ -1,7 +1,7 @@
 # Makefile for Mattermost Policy Plugin
 
 PLUGIN_ID ?= com.archtis.mattermost-policy-plugin
-PLUGIN_VERSION ?= 1.0.0
+PLUGIN_VERSION ?= 1.0.2
 BUNDLE_NAME ?= $(PLUGIN_ID)-$(PLUGIN_VERSION).tar.gz
 
 ## Build the plugin for all supported platforms

@@ -23,67 +23,38 @@ Create a namespace in TDI for your Mattermost policies:
 tdi namespace create mattermost-policies
 ```
 
-### 1.2 Deploy Workflows
+### 1.2 Deploy Workflows and Gateways
 
-Upload the workflow files to your TDI namespace:
+The plugin calls TDI at policy paths under `policy/v1/`. For each policy you enable, deploy a corresponding gateway and workflow.
 
-```bash
-# Navigate to the workflows directory
-cd workflows/
+**Minimum for default config** (Message + Channel Join policy):
+- `policy/v1/message/check` — MessageWillBePosted
+- `policy/v1/channel/join` — UserHasJoinedChannel
 
-# Upload via TDI UI or CLI
-# File: message-policy.yaml → /workflows/message-policy.yaml
-# File: channel-join-policy.yaml → /workflows/channel-join-policy.yaml
-```
+**Full list of policy paths** — see [PLUGIN_HOOKS.md](PLUGIN_HOOKS.md#tdi-policy-paths) for all paths and which config enables them.
 
-**Via TDI UI:**
+If using the companion `tdi-mattermost-workflows` package, workflows and gateways are in its `workflows/` and `gateways/` directories. Upload via TDI UI:
 1. Navigate to your namespace
-2. Go to Workflows section
-3. Create new workflow
-4. Copy contents of each YAML file
-5. Save
+2. **Workflows:** Create workflow for each policy (e.g. `message-policy.yaml`, `channel-join-policy.yaml`)
+3. **Gateways:** Create endpoints that invoke those workflows at the matching paths
 
-### 1.3 Deploy Gateways
+### 1.3 Test TDI Endpoints
 
-Upload the gateway definitions:
-
-```bash
-# Navigate to the gateways directory
-cd gateways/
-
-# Upload via TDI UI or CLI
-# File: message-policy.yaml → /gateways/message-policy.yaml
-# File: channel-join-policy.yaml → /gateways/channel-join-policy.yaml
-```
-
-**Via TDI UI:**
-1. Navigate to your namespace
-2. Go to Gateway/Endpoints section
-3. Create new endpoint
-4. Copy contents of each YAML file
-5. Save and activate
-
-### 1.4 Test TDI Endpoints
-
-Verify the endpoints are accessible:
+Verify the endpoints you use are accessible:
 
 ```bash
 # Test message policy endpoint
 curl -X POST https://your-tdi-instance.com/ns/mattermost-policies/policy/v1/message/check \
   -H "Content-Type: application/json" \
-  -d @data/sample-message-request.json
+  -d '{"user_id":"test","username":"test","channel_name":"general","message":"hello","action":"message"}'
 
 # Expected response:
-# {
-#   "status": "success",
-#   "action": "continue",
-#   "result": {}
-# }
+# {"status":"success","action":"continue","result":{}}
 
 # Test channel join policy endpoint
 curl -X POST https://your-tdi-instance.com/ns/mattermost-policies/policy/v1/channel/join \
   -H "Content-Type: application/json" \
-  -d @data/sample-channel-join-request.json
+  -d '{"user_id":"test","username":"test","channel_name":"general","action":"channel_join"}'
 ```
 
 ## Step 2: Build Mattermost Plugin
@@ -91,7 +62,7 @@ curl -X POST https://your-tdi-instance.com/ns/mattermost-policies/policy/v1/chan
 ### 2.1 Install Dependencies
 
 ```bash
-cd plugin/
+cd tdi-mattermost-plugins/
 go mod download
 go mod tidy
 ```
@@ -113,7 +84,7 @@ make build-windows  # Windows AMD64
 ```bash
 make bundle
 
-# This creates: dist/com.archtis.mattermost-policy-plugin-1.0.0.tar.gz
+# This creates: dist/com.archtis.mattermost-policy-plugin-1.0.2.tar.gz
 ```
 
 ## Step 3: Install Plugin in Mattermost
@@ -123,7 +94,7 @@ make bundle
 1. Log in to Mattermost as **System Administrator**
 2. Navigate to **System Console** → **Plugins** → **Plugin Management**
 3. Click **Upload Plugin**
-4. Select the bundle file: `com.archtis.mattermost-policy-plugin-1.0.0.tar.gz`
+4. Select the bundle file: `com.archtis.mattermost-policy-plugin-1.0.2.tar.gz`
 5. Click **Upload**
 
 ### 3.2 Enable Plugin
@@ -134,44 +105,61 @@ make bundle
 
 ## Step 4: Configure Plugin
 
-### 4.1 Basic Configuration
+### 4.1 Required Settings
 
 1. Navigate to **System Console** → **Plugins** → **Mattermost Policy Plugin**
-2. Configure the following settings:
+2. Set the required values:
 
 | Setting | Value | Description |
 |---------|-------|-------------|
 | **TDI Base URL** | `https://your-tdi-instance.com` | Your TDI instance URL (no trailing slash) |
 | **TDI Namespace** | `mattermost-policies` | The namespace containing your workflows |
-| **Enable Message Policy Checks** | `true` | Enable message policy enforcement |
-| **Enable Channel Join Policy Checks** | `true` | Enable channel join policy enforcement |
 | **Policy Request Timeout** | `5` | Seconds to wait for policy response |
 
 3. Click **Save**
 
-### 4.2 Optional Configuration
+### 4.2 Policy Toggles
 
-**TDI API Key** (if your TDI instance requires authentication):
-```
-your-api-key-here
-```
+Enable only the policies you have workflows for. Each enabled policy calls TDI at the corresponding path (see [PLUGIN_HOOKS.md](PLUGIN_HOOKS.md)).
 
-**Enable Debug Logging** (for troubleshooting):
-```
-true
-```
+| Policy | Config Key | Default | Description |
+|--------|------------|---------|-------------|
+| **Message (block)** | Enable Message Policy Checks | `true` | Block posts before they are saved |
+| **Channel Join** | Enable Channel Join Policy Checks | `true` | Check when users join channels; can remove them |
+| **Message Edit** | Enable Message Edit Policy Checks | `false` | Block message edits |
+| **Message Delete (audit)** | Enable Message Delete Policy (audit) | `false` | Report deletions to TDI |
+| **File Upload** | Enable File Upload Policy Checks | `false` | Block file uploads |
+| **Login** | Enable Login Policy Checks | `false` | Block user login |
+| **Channel Creation** | Enable Channel Creation Policy | `false` | Auto-classify channels, report creation |
+| **Reactions** | Enable Reaction Policy Checks | `false` | Report/restrict emoji reactions |
+| **User Created (audit)** | Enable User Created Policy (audit) | `false` | Report new users |
+| **Team Join** | Enable Team Join Policy Checks | `false` | Check when users join teams |
+| **User Left Team (audit)** | Enable User Left Team Policy (audit) | `false` | Report users leaving teams |
+| **User Left Channel (audit)** | Enable User Left Channel Policy (audit) | `false` | Report users leaving channels |
+| **Message Posted (audit)** | Enable Message Posted Policy (audit) | `false` | Report new messages |
+| **Message Updated (audit)** | Enable Message Updated Policy (audit) | `false` | Report message edits |
+| **User Logged In (audit)** | Enable User Logged In Policy (audit) | `false` | Report successful logins |
+| **Messages Consumed** | Enable Messages Consumed Policy | `false` | Report messages before they reach client (9.3+) |
+| **User Deactivated (audit)** | Enable User Deactivated Policy (audit) | `false` | Report user deactivation (9.1+) |
+| **Push Notification** | Enable Push Notification Policy | `false` | Block/modify push notifications |
+| **Config Validation** | Enable Config Validation Policy | `false` | Validate server config before save |
+| **SAML Login (audit)** | Enable SAML Login Policy (audit) | `false` | Report SAML logins (10.7+) |
 
-**Exempt System Admins** (allow admins to bypass policies):
-```
-false  # Set to true if you want admins to bypass all policies
-```
+### 4.3 Advanced Settings
 
-**User Attribute Mapping** (map Mattermost fields to policy attributes):
+| Setting | Description |
+|---------|-------------|
+| **TDI API Key** | API key for TDI authentication (optional) |
+| **Enable Debug Logging** | Log policy requests/responses (for troubleshooting) |
+| **Exempt System Admins** | Bypass all policy checks for system admins |
+| **User Attribute Mapping** | JSON mapping of policy attribute names to Mattermost/LDAP fields |
+
+Example User Attribute Mapping:
 ```json
 {
-  "clearance": "CustomAttribute1",
-  "department": "CustomAttribute2",
-  "nationality": "CustomAttribute3"
+  "clearance": "employeeClearance",
+  "department": "department",
+  "nationality": "country"
 }
 ```
 
@@ -343,9 +331,9 @@ For issues or questions:
 
 After installation:
 
-1. **Customize workflows** - Modify policies to match your organization's requirements
-2. **Test extensively** - Verify all policy scenarios work as expected
-3. **Train users** - Educate users on channel classification and access restrictions
-4. **Monitor logs** - Set up monitoring for policy decisions and denials
-5. **Iterate** - Refine policies based on usage patterns and feedback
+1. **Review policy hooks** — See [PLUGIN_HOOKS.md](PLUGIN_HOOKS.md) for all 23 hooks and TDI policy paths
+2. **Customize workflows** — Deploy TDI gateways and workflows for each enabled policy
+3. **Test extensively** — Verify all policy scenarios work as expected
+4. **Train users** — Educate users on channel classification and access restrictions
+5. **Monitor logs** — Set up monitoring for policy decisions and denials
 

@@ -28,7 +28,20 @@ type configuration struct {
 	EnableFileUploadPolicy      bool
 	EnableLoginPolicy           bool
 	EnableChannelCreationPolicy bool
-	PolicyTimeout               int
+	EnableReactionPolicy        bool
+	EnableUserCreatedPolicy     bool
+	EnableTeamJoinPolicy        bool
+	EnableUserLeftTeamPolicy    bool
+	EnableUserLeftChannelPolicy     bool
+	EnableMessagePostedPolicy       bool   // audit: MessageHasBeenPosted
+	EnableMessageUpdatedPolicy      bool   // audit: MessageHasBeenUpdated
+	EnableUserLoggedInPolicy        bool   // audit: UserHasLoggedIn
+	EnableMessagesConsumedPolicy    bool   // filter: MessagesWillBeConsumed
+	EnableUserDeactivatedPolicy     bool   // audit: UserHasBeenDeactivated
+	EnablePushNotificationPolicy    bool   // block/modify: NotificationWillBePushed
+	EnableConfigValidationPolicy    bool   // validate: ConfigurationWillBeSaved
+	EnableSAMLLoginPolicy           bool   // audit: OnSAMLLogin (server 10.7+)
+	PolicyTimeout                   int
 	EnableDebugLogging          bool
 	ExemptSystemAdmins          bool
 	UserAttributeMapping        string
