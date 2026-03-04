@@ -1,216 +1,122 @@
-# ✅ Implementation Complete - 5 High-Value Hooks Added!
+# Implementation Summary
 
-## What Was Implemented
+## Overview
 
-Successfully added **5 new high-value policy hooks** to the Mattermost Policy Plugin!
-
-### Total: 7 Policy Controls (2 original + 5 new)
-
-| # | Policy | Status | What It Controls |
-|---|--------|--------|------------------|
-| 1 | 💬 Message Post | ✅ Original | Block messages before posting |
-| 2 | 🚪 Channel Join | ✅ Original | Remove users from restricted channels |
-| 3 | ✏️ **Message Edit** | ⭐ **NEW** | Prevent message tampering (5 min lock for classified) |
-| 4 | 🗑️ **Message Delete** | ⭐ **NEW** | Preserve audit trails (blocks audit channels) |
-| 5 | 📎 **File Upload** | ⭐ **NEW** | Block executables, enforce 10MB limit |
-| 6 | 🔐 **User Login** | ⭐ **NEW** | Business hours only (7 AM-8 PM for uncleared) |
-| 7 | 📢 **Channel Creation** | ⭐ **NEW** | Auto-classify "ts-*" → TOP SECRET |
+The TDI Mattermost Policy Plugin integrates Mattermost with TDI (formerly Direktiv) for policy enforcement and audit. It implements **23 plugin hooks** that call TDI over HTTP for approve/deny decisions and runs fail-secure (deny on error).
 
 ---
 
-## Files Created/Modified
+## Implemented Hooks (23)
 
-### Plugin Files (3 modified)
-- ✅ `plugin/main.go` - Added 5 new hooks (~450 lines)
-- ✅ `plugin/configuration.go` - Added 5 config fields
-- ✅ `plugin/plugin.json` - Added 5 settings (disabled by default)
+### Blocking Hooks (7)
 
-### TDI Gateways (5 new)
-- ✅ `gateways/message-edit-policy.yaml`
-- ✅ `gateways/message-delete-policy.yaml`
-- ✅ `gateways/file-upload-policy.yaml`
-- ✅ `gateways/login-policy.yaml`
-- ✅ `gateways/channel-creation-policy.yaml`
+| Hook | Config Key | Description |
+|------|------------|-------------|
+| MessageWillBePosted | `EnableMessagePolicy` | Approve/deny messages before posting |
+| MessageWillBeUpdated | `EnableMessageEditPolicy` | Approve/deny message edits |
+| FileWillBeUploaded | `EnableFileUploadPolicy` | Approve/deny file uploads |
+| UserWillLogIn | `EnableLoginPolicy` | Approve/deny user login |
+| UserHasJoinedChannel | `EnableChannelJoinPolicy` | Check channel joins; can remove user post-join |
+| NotificationWillBePushed | `EnablePushNotificationPolicy` | Approve/deny push notifications (9.0+) |
+| ConfigurationWillBeSaved | `EnableConfigValidationPolicy` | Validate server config before save (8.0+) |
 
-### TDI Workflows (5 new)
-- ✅ `workflows/message-edit-policy.yaml`
-- ✅ `workflows/message-delete-policy.yaml`
-- ✅ `workflows/file-upload-policy.yaml`
-- ✅ `workflows/login-policy.yaml`
-- ✅ `workflows/channel-creation-policy.yaml`
+### Audit Hooks (15)
 
-### Documentation (1 updated)
-- ✅ `README.md` - Updated with new features
+| Hook | Config Key | Description |
+|------|------------|-------------|
+| MessageHasBeenPosted | `EnableMessagePostedPolicy` | Report new messages |
+| MessageHasBeenUpdated | `EnableMessageUpdatedPolicy` | Report message edits |
+| MessageHasBeenDeleted | `EnableMessageDeletePolicy` | Report deletions (audit only; Mattermost cannot block) |
+| UserHasLoggedIn | `EnableUserLoggedInPolicy` | Report successful logins |
+| ChannelHasBeenCreated | `EnableChannelCreationPolicy` | Auto-classify channels, report creation |
+| UserHasJoinedTeam | `EnableTeamJoinPolicy` | Report/restrict team joins |
+| UserHasLeftTeam | `EnableUserLeftTeamPolicy` | Report team leaves |
+| UserHasLeftChannel | `EnableUserLeftChannelPolicy` | Report channel leaves |
+| ReactionHasBeenAdded | `EnableReactionPolicy` | Report/restrict emoji reactions |
+| ReactionHasBeenRemoved | `EnableReactionPolicy` | Report reaction removal |
+| UserHasBeenCreated | `EnableUserCreatedPolicy` | Report new users |
+| UserHasBeenDeactivated | `EnableUserDeactivatedPolicy` | Report user deactivation (9.1+) |
+| OnSAMLLogin | `EnableSAMLLoginPolicy` | Report SAML logins (10.7+) |
 
-**Total: 14 files created/modified**
+### Special (1)
 
----
-
-## Quick Feature Reference
-
-### Message Edit Policy
-- ❌ Classified channels: Can't edit after 5 minutes
-- ❌ Protected channels: Can't edit after 1 minute
-- ❌ Audit channels: No substantial changes allowed
-
-### Message Delete Policy
-- ❌ Audit/compliance/legal: **NO deletions ever**
-- ❌ Classified >1 hour: Can't delete
-- ❌ Sensitive keywords: Protected from deletion
-
-### File Upload Policy
-- ❌ Executables (.exe, .sh, .bat): **BLOCKED everywhere**
-- ❌ >10MB in classified channels
-- ❌ Documents in secret channels without clearance
-- ❌ Keys/certs in external channels
-- ❌ >5MB for uncleared users
-
-### Login Policy
-- ❌ No clearance + outside 7AM-8PM: Login blocked
-- ❌ No clearance + weekend: Login blocked
-- ❌ Contractor + weekend: Login blocked
-
-### Channel Creation Policy
-- ✅ "ts-*" → Auto-classified TOP SECRET
-- ✅ "secret" → Auto-classified SECRET
-- ❌ Create TS channel without TS clearance: Blocked
+| Hook | Config Key | Description |
+|------|------------|-------------|
+| MessagesWillBeConsumed | `EnableMessagesConsumedPolicy` | Report messages before they reach client (9.3+) |
 
 ---
 
-## How to Enable
+## Key Files
 
-All new policies are **disabled by default**. Enable them individually:
-
-```
-System Console → Plugins → Mattermost Policy Plugin
-→ Enable[PolicyName]Policy → Save
-```
-
-### Recommended Rollout Order
-
-1. **Week 1**: `EnableFileUploadPolicy` (most critical)
-2. **Week 2**: `EnableMessageDeletePolicy` (audit compliance)
-3. **Week 3**: `EnableMessageEditPolicy` (message integrity)
-4. **Week 4**: `EnableLoginPolicy` (access control)
-5. **Week 5**: `EnableChannelCreationPolicy` (automation)
+| File | Role |
+|------|------|
+| `main.go` | Plugin hooks, policy requests to TDI, user attribute extraction |
+| `configuration.go` | Config struct, OnConfigurationChange |
+| `plugin.json` | Plugin manifest, settings schema |
+| `PLUGIN_HOOKS.md` | Full hook list and TDI policy paths |
+| `INSTALLATION.md` | Installation and configuration guide |
 
 ---
 
-## Testing Quick Guide
+## TDI Policy Paths
 
-### Test File Upload Policy
-```bash
-# 1. Enable: EnableFileUploadPolicy = true
-# 2. Try uploading "virus.exe" to any channel
-# Expected: ❌ "Executable files are not allowed"
-```
+The plugin calls TDI at `{TDIURL}/ns/{namespace}/policy/v1/{path}`. See [PLUGIN_HOOKS.md](PLUGIN_HOOKS.md#tdi-policy-paths) for the full list.
 
-### Test Message Delete Policy
-```bash
-# 1. Enable: EnableMessageDeletePolicy = true
-# 2. Post message in "#audit-trail" channel
-# 3. Try to delete it
-# Expected: ❌ "Messages in audit channels cannot be deleted"
-```
-
-### Test Login Policy
-```bash
-# 1. Enable: EnableLoginPolicy = true
-# 2. As uncleared user, try login at 11 PM
-# Expected: ❌ "Users can only login during business hours"
-```
+Example paths:
+- `message/check` — MessageWillBePosted
+- `channel/join` — UserHasJoinedChannel
+- `message/edit` — MessageWillBeUpdated
+- `message/delete` — MessageHasBeenDeleted
+- `file/upload` — FileWillBeUploaded
+- `user/login` — UserWillLogIn
+- `channel/create` — ChannelHasBeenCreated
+- …plus 16 more for audit and other policies
 
 ---
 
-## TDI Deployment
+## User Attributes
 
-Deploy all gateways and workflows to TDI:
+The plugin sends user attributes to TDI for policy evaluation:
 
-```bash
-# Deploy gateways
-tdi gateway create mattermost-policies message-edit gateways/message-edit-policy.yaml
-tdi gateway create mattermost-policies message-delete gateways/message-delete-policy.yaml
-tdi gateway create mattermost-policies file-upload gateways/file-upload-policy.yaml
-tdi gateway create mattermost-policies login gateways/login-policy.yaml
-tdi gateway create mattermost-policies channel-create gateways/channel-creation-policy.yaml
-
-# Deploy workflows
-tdi workflow create mattermost-policies message-edit workflows/message-edit-policy.yaml
-tdi workflow create mattermost-policies message-delete workflows/message-delete-policy.yaml
-tdi workflow create mattermost-policies file-upload workflows/file-upload-policy.yaml
-tdi workflow create mattermost-policies login workflows/login-policy.yaml
-tdi workflow create mattermost-policies channel-create workflows/channel-creation-policy.yaml
-```
+- **Built-in**: `username`, `email`, `roles`, `first_name`, `last_name`, `nickname`, `position`
+- **LDAP** (when `AuthService == "ldap"`): via `GetLDAPUserAttributes`
+- **Custom profile** (Enterprise 10.10+): via Property API (`SearchPropertyValues`, `SearchPropertyFields`)
+- **UserAttributeMapping**: Maps policy keys to Mattermost/LDAP fields (e.g. `{"clearance": "employeeClearance"}`)
 
 ---
 
-## Key Endpoints
-
-| Policy | Endpoint | Gateway |
-|--------|----------|---------|
-| Message Edit | `POST /policy/v1/message/edit` | message-edit-policy.yaml |
-| Message Delete | `POST /policy/v1/message/delete` | message-delete-policy.yaml |
-| File Upload | `POST /policy/v1/file/upload` | file-upload-policy.yaml |
-| Login | `POST /policy/v1/user/login` | login-policy.yaml |
-| Channel Create | `POST /policy/v1/channel/create` | channel-creation-policy.yaml |
-
----
-
-## Security Features
-
-✅ **Fail-Secure**: All policies deny on error  
-✅ **Admin Bypass**: Optional exemption via `ExemptSystemAdmins`  
-✅ **Audit Logging**: All decisions logged  
-✅ **Real-time**: Instant enforcement  
-✅ **Configurable**: Enable/disable per policy
-
----
-
-## Architecture Pattern (Same as Pexip)
+## Architecture
 
 ```
-User Action → Plugin Hook → HTTP POST → TDI Gateway 
-→ Workflow → Policy Decision → Allow/Deny
+User Action → Plugin Hook → HTTP POST → TDI Gateway → Workflow → Allow/Deny
 ```
 
-Just like your Pexip integration!
+- **Fail-secure**: On TDI error or timeout, the plugin denies the action
+- **Configurable**: Each policy can be enabled/disabled via plugin settings
+- **Admin exemption**: Optional bypass for system admins via `ExemptSystemAdmins`
 
 ---
 
 ## Stats
 
-- **Total Hooks**: 7
-- **New Hooks**: 5
-- **Policy Rules**: 25+
-- **Lines of Code**: ~1,200
-- **Files Created**: 10
-- **Files Modified**: 4
-- **Implementation Time**: ~3 hours
-- **Production Ready**: ✅ Yes
-
----
-
-## What's Next
-
-1. Deploy gateways/workflows to TDI
-2. Build plugin: `cd plugin && make bundle`
-3. Install plugin in Mattermost
-4. Test each policy individually
-5. Enable gradually in production
+| Metric | Value |
+|--------|-------|
+| Total hooks | 23 |
+| Blocking | 7 |
+| Audit | 15 |
+| Special | 1 |
+| Config options | 20 policy toggles + 5 advanced |
+| Min Mattermost | 9.0.0 |
 
 ---
 
 ## Documentation
 
-- `README.md` - Main documentation (updated)
-- `PLUGIN_HOOKS.md` - All 22+ available hooks
-- `INSTALLATION.md` - Step-by-step setup
-- `TESTING.md` - Test scenarios
-- `CUSTOMIZATION.md` - Advanced customization
+- [PLUGIN_HOOKS.md](PLUGIN_HOOKS.md) — Hooks and TDI paths
+- [INSTALLATION.md](INSTALLATION.md) — Setup and configuration
+- [BUILD_NOTES.md](BUILD_NOTES.md) — Build requirements
 
 ---
 
-**Status:** ✅ **COMPLETE**  
-**Ready for:** Deployment & Testing  
-**All Policies:** Implemented & Working
-
+**Status:** ✅ Complete  
+**Ready for:** Deployment and testing
