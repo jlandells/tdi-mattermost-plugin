@@ -6,8 +6,10 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -24,21 +26,33 @@ type Plugin struct {
 	configuration     *configuration
 	configurationLock sync.RWMutex
 	httpClient        *http.Client
+	router            *http.ServeMux
+}
+
+// FileAttachmentInfo describes an attached file for policy decisions
+type FileAttachmentInfo struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Size      int64  `json:"size"`
+	MimeType  string `json:"mime_type"`
+	Extension string `json:"extension"` // e.g. ".pdf", ".exe"
 }
 
 // PolicyRequest represents a request sent to TDI for policy decision
 type PolicyRequest struct {
-	UserID         string                 `json:"user_id"`
-	Username       string                 `json:"username"`
-	Email          string                 `json:"email"`
-	ChannelID      string                 `json:"channel_id"`
-	ChannelName    string                 `json:"channel_name"`
-	TeamID         string                 `json:"team_id"`
-	TeamName       string                 `json:"team_name"`
-	Message        string                 `json:"message,omitempty"`
-	UserAttributes map[string]interface{} `json:"user_attributes"`
-	ChannelHeader  string                 `json:"channel_header,omitempty"`
-	Action         string                 `json:"action"` // "message" or "channel_join"
+	UserID          string                 `json:"user_id"`
+	Username        string                 `json:"username"`
+	Email           string                 `json:"email"`
+	ChannelID       string                 `json:"channel_id"`
+	ChannelName     string                 `json:"channel_name"`
+	TeamID          string                 `json:"team_id"`
+	TeamName        string                 `json:"team_name"`
+	Message         string                 `json:"message,omitempty"`
+	UserAttributes  map[string]interface{} `json:"user_attributes"`
+	ChannelHeader   string                 `json:"channel_header,omitempty"`
+	Action          string                 `json:"action"` // "message" or "channel_join"
+	FileIds         []string               `json:"file_ids,omitempty"`
+	FileAttachments []FileAttachmentInfo   `json:"file_attachments,omitempty"`
 }
 
 // PolicyResponse represents the response from TDI
@@ -56,6 +70,12 @@ func (p *Plugin) OnActivate() error {
 	p.httpClient = &http.Client{
 		Timeout: time.Duration(config.PolicyTimeout) * time.Second,
 	}
+
+	// Initialize HTTP router for classify-channel and webapp API
+	p.router = http.NewServeMux()
+	p.router.HandleFunc("/classify-channel", p.handleClassifyChannel)
+	p.router.HandleFunc("/api/policies", p.handleAPIPolicies)
+	p.router.HandleFunc("/api/classify", p.handleAPIClassify)
 
 	p.API.LogInfo("Mattermost Policy Plugin activated",
 		"tdi_url", config.TDIURL,
@@ -110,17 +130,19 @@ func (p *Plugin) MessageWillBePosted(c *plugin.Context, post *model.Post) (*mode
 
 	// Build policy request
 	policyReq := PolicyRequest{
-		UserID:         user.Id,
-		Username:       user.Username,
-		Email:          user.Email,
-		ChannelID:      channel.Id,
-		ChannelName:    channel.Name,
-		TeamID:         channel.TeamId,
-		TeamName:       teamName,
-		Message:        post.Message,
-		UserAttributes: p.extractUserAttributes(user),
-		ChannelHeader:  channel.Header,
-		Action:         "message",
+		UserID:          user.Id,
+		Username:        user.Username,
+		Email:           user.Email,
+		ChannelID:       channel.Id,
+		ChannelName:     channel.Name,
+		TeamID:          channel.TeamId,
+		TeamName:        teamName,
+		Message:         post.Message,
+		UserAttributes:  p.extractUserAttributes(user),
+		ChannelHeader:   channel.Header,
+		Action:          "message",
+		FileIds:         post.FileIds,
+		FileAttachments: p.buildFileAttachments(post.FileIds),
 	}
 
 	// Check policy
@@ -323,13 +345,13 @@ func (p *Plugin) checkPolicy(req PolicyRequest, policyType string) (bool, string
 }
 
 // extractUserAttributes extracts user attributes from various sources for TDI policy evaluation.
-// - Basic fields (username, email, roles, etc.) are always included.
-// - Built-in User fields (first_name, last_name, nickname, position) are included so SAML-mapped
-//   attributes flow through (SAML populates these, not user.Props).
-// - Custom profile attributes (Mattermost Enterprise v10.10+, e.g. SecurityClearance, Nationality)
-//   are fetched via SearchPropertyValues / SearchPropertyFields and included by field name.
-//   These sync from SAML/LDAP when linked in System Console > System properties.
-// - UserAttributeMapping maps policy keys to Mattermost/LDAP fields. Supports:
+//   - Basic fields (username, email, roles, etc.) are always included.
+//   - Built-in User fields (first_name, last_name, nickname, position) are included so SAML-mapped
+//     attributes flow through (SAML populates these, not user.Props).
+//   - Custom profile attributes (Mattermost Enterprise v10.10+, e.g. SecurityClearance, Nationality)
+//     are fetched via SearchPropertyValues / SearchPropertyFields and included by field name.
+//     These sync from SAML/LDAP when linked in System Console > System properties.
+//   - UserAttributeMapping maps policy keys to Mattermost/LDAP fields. Supports:
 //   - Built-in User fields: first_name, last_name, nickname, position
 //   - user.Props (custom data written by other plugins/integrations)
 //   - LDAP attributes (when AuthService=ldap): uses GetLDAPUserAttributes
@@ -400,6 +422,37 @@ func (p *Plugin) extractUserAttributes(user *model.User) map[string]interface{} 
 	}
 
 	return attributes
+}
+
+// buildFileAttachments fetches FileInfo for each file ID and returns metadata for policy evaluation.
+// Extension is normalized to include a leading dot (e.g. ".pdf") for consistency with file-upload-policy.
+func (p *Plugin) buildFileAttachments(fileIds []string) []FileAttachmentInfo {
+	if len(fileIds) == 0 {
+		return nil
+	}
+	out := make([]FileAttachmentInfo, 0, len(fileIds))
+	for _, id := range fileIds {
+		if id == "" {
+			continue
+		}
+		info, appErr := p.API.GetFileInfo(id)
+		if appErr != nil || info == nil {
+			out = append(out, FileAttachmentInfo{ID: id})
+			continue
+		}
+		ext := info.Extension
+		if ext != "" && ext[0] != '.' {
+			ext = "." + ext
+		}
+		out = append(out, FileAttachmentInfo{
+			ID:        info.Id,
+			Name:      info.Name,
+			Size:      info.Size,
+			MimeType:  info.MimeType,
+			Extension: ext,
+		})
+	}
+	return out
 }
 
 // mergeCustomProfileAttributes fetches custom profile attributes (e.g. SecurityClearance, Nationality)
@@ -997,10 +1050,10 @@ func (p *Plugin) UserHasLeftChannel(c *plugin.Context, channelMember *model.Chan
 		channelName = channel.Name
 	}
 	policyReq := map[string]interface{}{
-		"user_id":     channelMember.UserId,
-		"channel_id":  channelMember.ChannelId,
+		"user_id":      channelMember.UserId,
+		"channel_id":   channelMember.ChannelId,
 		"channel_name": channelName,
-		"action":      "channel_leave",
+		"action":       "channel_leave",
 	}
 	_, _ = p.checkGenericPolicy(policyReq, "channel/leave")
 }
@@ -1131,12 +1184,12 @@ func (p *Plugin) NotificationWillBePushed(pushNotification *model.PushNotificati
 		return nil, ""
 	}
 	policyReq := map[string]interface{}{
-		"user_id":     userID,
-		"post_id":     pushNotification.PostId,
-		"channel_id":  pushNotification.ChannelId,
-		"server_id":   pushNotification.ServerId,
-		"message":     pushNotification.Message,
-		"action":      "push_notification",
+		"user_id":    userID,
+		"post_id":    pushNotification.PostId,
+		"channel_id": pushNotification.ChannelId,
+		"server_id":  pushNotification.ServerId,
+		"message":    pushNotification.Message,
+		"action":     "push_notification",
 	}
 	allowed, reason := p.checkGenericPolicy(policyReq, "notification/push")
 	if !allowed {
@@ -1265,6 +1318,557 @@ func (p *Plugin) checkGenericPolicy(req map[string]interface{}, policyPath strin
 	}
 
 	return false, reason
+}
+
+// ============================================================================
+// ServeHTTP - classify-channel endpoint for access control policy assignment
+// ============================================================================
+
+// ServeHTTP allows the plugin to implement the http.Handler interface.
+// Requests to /plugins/{id}/* are routed here.
+func (p *Plugin) ServeHTTP(_ *plugin.Context, w http.ResponseWriter, r *http.Request) {
+	p.router.ServeHTTP(w, r)
+}
+
+// AccessControlPolicy and related types for Mattermost REST API (not in plugin API)
+type accessControlPolicy struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Active   bool   `json:"active"`
+	CreateAt int64  `json:"create_at"`
+}
+
+type accessControlPoliciesResponse struct {
+	Policies []*accessControlPolicy `json:"policies"`
+	Total    int64                  `json:"total"`
+}
+
+// policyChannelsResponse holds the response from GET .../access_control_policies/{id}/resources/channels
+type policyChannelsResponse struct {
+	Channels   []struct{ ID string `json:"id"` } `json:"channels"`
+	TotalCount int64                             `json:"total_count"`
+}
+
+// isChannelAdmin returns true if the user is a channel admin (or system admin) for the channel
+func (p *Plugin) isChannelAdmin(channelID, userID string) bool {
+	user, err := p.API.GetUser(userID)
+	if err != nil || user == nil {
+		return false
+	}
+	if user.IsSystemAdmin() {
+		return true
+	}
+	member, err := p.API.GetChannelMember(channelID, userID)
+	if err != nil || member == nil {
+		return false
+	}
+	return strings.Contains(member.Roles, "channel_admin")
+}
+
+// handleAPIPolicies returns JSON list of access control policies (for webapp)
+func (p *Plugin) handleAPIPolicies(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	userID := r.Header.Get("Mattermost-User-Id")
+	if userID == "" {
+		p.serveJSONError(w, http.StatusUnauthorized, "Not authenticated")
+		return
+	}
+	channelID := r.URL.Query().Get("channel_id")
+	if channelID == "" {
+		p.serveJSONError(w, http.StatusBadRequest, "channel_id required")
+		return
+	}
+	if !p.isChannelAdmin(channelID, userID) {
+		p.serveJSONError(w, http.StatusForbidden, "Only channel admins can classify channels")
+		return
+	}
+	config := p.getConfiguration()
+	if config.MattermostAPIToken == "" {
+		p.serveJSONError(w, http.StatusServiceUnavailable, "Channel classification not configured")
+		return
+	}
+	policies, err := p.fetchAccessControlPolicies()
+	if err != nil {
+		p.API.LogError("Failed to fetch policies for API", "error", err.Error())
+		p.serveJSONError(w, http.StatusInternalServerError, "Failed to load policies")
+		return
+	}
+	currentPolicy, _ := p.fetchChannelAssignedPolicy(channelID)
+	payload := map[string]interface{}{"policies": policies}
+	if currentPolicy != nil {
+		payload["current_policy"] = map[string]interface{}{"id": currentPolicy.ID, "name": currentPolicy.Name}
+	} else {
+		payload["current_policy"] = nil
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+// handleAPIClassify assigns a policy to a channel (for webapp)
+func (p *Plugin) handleAPIClassify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	userID := r.Header.Get("Mattermost-User-Id")
+	if userID == "" {
+		p.serveJSONError(w, http.StatusUnauthorized, "Not authenticated")
+		return
+	}
+	config := p.getConfiguration()
+	if config.MattermostAPIToken == "" {
+		p.serveJSONError(w, http.StatusServiceUnavailable, "Channel classification not configured")
+		return
+	}
+	var req struct {
+		ChannelID string `json:"channel_id"`
+		PolicyID  string `json:"policy_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		p.serveJSONError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if req.ChannelID == "" || req.PolicyID == "" {
+		p.serveJSONError(w, http.StatusBadRequest, "channel_id and policy_id required")
+		return
+	}
+	channel, err := p.API.GetChannel(req.ChannelID)
+	if err != nil || channel == nil {
+		p.serveJSONError(w, http.StatusNotFound, "Channel not found")
+		return
+	}
+	if !p.isChannelAdmin(req.ChannelID, userID) {
+		p.serveJSONError(w, http.StatusForbidden, "Only channel admins can classify channels")
+		return
+	}
+	if err := p.assignPolicyToChannel(req.PolicyID, req.ChannelID); err != nil {
+		p.API.LogError("Failed to assign policy via API", "error", err.Error(), "channel_id", req.ChannelID, "policy_id", req.PolicyID)
+		p.serveJSONError(w, http.StatusInternalServerError, "Failed to assign policy")
+		return
+	}
+	user, _ := p.API.GetUser(userID)
+	username := "A user"
+	if user != nil {
+		username = user.Username
+	}
+	post := &model.Post{
+		UserId:    userID,
+		ChannelId: req.ChannelID,
+		Message:   fmt.Sprintf("Channel **%s** has been classified. Users can now join based on the assigned access control policy.", channel.Name),
+	}
+	if _, err := p.API.CreatePost(post); err != nil {
+		p.API.LogError("Failed to post classification confirmation", "error", err.Error())
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Channel classified successfully",
+		"channel_name": channel.Name,
+		"username": username,
+	})
+}
+
+func (p *Plugin) serveJSONError(w http.ResponseWriter, code int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": msg})
+}
+
+// handleClassifyChannel serves GET (form) and handles POST (submit)
+func (p *Plugin) handleClassifyChannel(w http.ResponseWriter, r *http.Request) {
+	config := p.getConfiguration()
+	if config.MattermostAPIToken == "" {
+		p.serveClassifyError(w, "Channel classification is not configured. Ask your administrator to set the Mattermost API Token.")
+		return
+	}
+
+	userID := r.Header.Get("Mattermost-User-Id")
+	if userID == "" {
+		p.serveClassifyError(w, "You must be logged in to classify a channel.")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		p.handleClassifyChannelGET(w, r, userID)
+	case http.MethodPost:
+		p.handleClassifyChannelPOST(w, r, userID)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (p *Plugin) handleClassifyChannelGET(w http.ResponseWriter, r *http.Request, userID string) {
+	channelID := r.URL.Query().Get("channel_id")
+	if channelID == "" {
+		p.serveClassifyError(w, "Missing channel_id parameter.")
+		return
+	}
+
+	channel, err := p.API.GetChannel(channelID)
+	if err != nil || channel == nil {
+		p.serveClassifyError(w, "Channel not found.")
+		return
+	}
+
+	if !p.isChannelAdmin(channelID, userID) {
+		p.serveClassifyError(w, "Only channel admins can classify channels.")
+		return
+	}
+
+	// Fetch parent policies via REST
+	policies, fetchErr := p.fetchAccessControlPolicies()
+	if fetchErr != nil {
+		p.API.LogError("Failed to fetch access control policies", "error", fetchErr.Error())
+		p.serveClassifyError(w, "Failed to load policies. Please try again later.")
+		return
+	}
+
+	p.serveClassifyForm(w, channelID, channel.Name, policies)
+}
+
+func (p *Plugin) handleClassifyChannelPOST(w http.ResponseWriter, r *http.Request, userID string) {
+	if err := r.ParseForm(); err != nil {
+		p.serveClassifyError(w, "Invalid form data.")
+		return
+	}
+
+	channelID := r.FormValue("channel_id")
+	policyID := r.FormValue("policy_id")
+	if channelID == "" || policyID == "" {
+		p.serveClassifyError(w, "Missing channel_id or policy_id.")
+		return
+	}
+
+	channel, err := p.API.GetChannel(channelID)
+	if err != nil || channel == nil {
+		p.serveClassifyError(w, "Channel not found.")
+		return
+	}
+
+	if !p.isChannelAdmin(channelID, userID) {
+		p.serveClassifyError(w, "Only channel admins can classify channels.")
+		return
+	}
+
+	if err := p.assignPolicyToChannel(policyID, channelID); err != nil {
+		p.API.LogError("Failed to assign policy to channel", "error", err.Error(), "channel_id", channelID, "policy_id", policyID)
+		p.serveClassifyError(w, "Failed to assign policy. Please try again.")
+		return
+	}
+
+	// Post confirmation in the channel
+	user, _ := p.API.GetUser(userID)
+	username := "A user"
+	if user != nil {
+		username = user.Username
+	}
+	post := &model.Post{
+		UserId:    userID,
+		ChannelId: channelID,
+		Message:   fmt.Sprintf("Channel **%s** has been classified. Users can now join based on the assigned access control policy.", channel.Name),
+	}
+	if _, err := p.API.CreatePost(post); err != nil {
+		p.API.LogError("Failed to post classification confirmation", "error", err.Error())
+	}
+
+	p.serveClassifySuccess(w, channel.Name, username)
+}
+
+func (p *Plugin) fetchAccessControlPolicies() ([]*accessControlPolicy, error) {
+	config := p.getConfiguration()
+	siteURL := p.getSiteURL()
+	if siteURL == "" {
+		return nil, fmt.Errorf("site URL not configured")
+	}
+
+	searchURL := strings.TrimSuffix(siteURL, "/") + "/api/v4/access_control_policies/search"
+	body := bytes.NewReader([]byte(`{"type":"parent"}`))
+
+	req, err := http.NewRequest("POST", searchURL, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+config.MattermostAPIToken)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result accessControlPoliciesResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, err
+	}
+
+	// Include all parent policies (active and inactive) so admins can assign any of them
+	out := make([]*accessControlPolicy, 0, len(result.Policies))
+	for _, pol := range result.Policies {
+		if pol != nil && pol.Type == "parent" {
+			out = append(out, pol)
+		}
+	}
+	return out, nil
+}
+
+// fetchChannelAssignedPolicy returns the parent policy currently assigned to the channel, or nil.
+func (p *Plugin) fetchChannelAssignedPolicy(channelID string) (*accessControlPolicy, error) {
+	policies, err := p.fetchAccessControlPolicies()
+	if err != nil {
+		return nil, err
+	}
+	config := p.getConfiguration()
+	siteURL := p.getSiteURL()
+	if siteURL == "" {
+		return nil, nil
+	}
+	baseURL := strings.TrimSuffix(siteURL, "/")
+	for _, pol := range policies {
+		if pol == nil {
+			continue
+		}
+		after := ""
+		const limit = 100
+		for {
+			urlStr := baseURL + "/api/v4/access_control_policies/" + url.PathEscape(pol.ID) + "/resources/channels?limit=" + fmt.Sprintf("%d", limit)
+			if after != "" {
+				urlStr += "&after=" + url.QueryEscape(after)
+			}
+			req, err := http.NewRequest("GET", urlStr, nil)
+			if err != nil {
+				return nil, err
+			}
+			req.Header.Set("Authorization", "Bearer "+config.MattermostAPIToken)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			req = req.WithContext(ctx)
+			resp, err := p.httpClient.Do(req)
+			cancel()
+			if err != nil {
+				return nil, err
+			}
+			respBody, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				break // skip this policy
+			}
+			var chResp policyChannelsResponse
+			if json.Unmarshal(respBody, &chResp) != nil {
+				break
+			}
+			for _, ch := range chResp.Channels {
+				if ch.ID == channelID {
+					return pol, nil
+				}
+			}
+			if int64(len(chResp.Channels)) < limit || len(chResp.Channels) == 0 {
+				break
+			}
+			after = chResp.Channels[len(chResp.Channels)-1].ID
+		}
+	}
+	return nil, nil
+}
+
+func (p *Plugin) unassignPolicyFromChannel(policyID, channelID string) error {
+	config := p.getConfiguration()
+	siteURL := p.getSiteURL()
+	if siteURL == "" {
+		return fmt.Errorf("site URL not configured")
+	}
+	unassignURL := strings.TrimSuffix(siteURL, "/") + "/api/v4/access_control_policies/" + url.PathEscape(policyID) + "/unassign"
+	payload := map[string][]string{"channel_ids": {channelID}}
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest("DELETE", unassignURL, bytes.NewReader(jsonData))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+config.MattermostAPIToken)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	// 200, 204, or 404 (not assigned) are all acceptable
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("unassign API returned %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (p *Plugin) assignPolicyToChannel(policyID, channelID string) error {
+	config := p.getConfiguration()
+	siteURL := p.getSiteURL()
+	if siteURL == "" {
+		return fmt.Errorf("site URL not configured")
+	}
+
+	// Unassign all parent policies from the channel before assigning the new one (removes old classification)
+	policies, err := p.fetchAccessControlPolicies()
+	if err == nil {
+		for _, pol := range policies {
+			if pol != nil {
+				_ = p.unassignPolicyFromChannel(pol.ID, channelID)
+			}
+		}
+	}
+
+	assignURL := strings.TrimSuffix(siteURL, "/") + "/api/v4/access_control_policies/" + url.PathEscape(policyID) + "/assign"
+	payload := map[string][]string{"channel_ids": {channelID}}
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", assignURL, bytes.NewReader(jsonData))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+config.MattermostAPIToken)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("assign API returned %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
+func (p *Plugin) getSiteURL() string {
+	cfg := p.API.GetConfig()
+	if cfg == nil || cfg.ServiceSettings.SiteURL == nil {
+		return ""
+	}
+	return strings.TrimSuffix(*cfg.ServiceSettings.SiteURL, "/")
+}
+
+func (p *Plugin) serveClassifyForm(w http.ResponseWriter, channelID, channelName string, policies []*accessControlPolicy) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	opts := ""
+	for _, pol := range policies {
+		tag := " (inactive)"
+		if pol.Active {
+			tag = " (active)"
+		}
+		opts += fmt.Sprintf(`<option value="%s">%s</option>`, html.EscapeString(pol.ID), html.EscapeString(pol.Name+tag))
+	}
+	if opts == "" {
+		opts = `<option value="">No policies available</option>`
+	}
+
+	page := `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Classify Channel</title></head>
+<body style="font-family:sans-serif;max-width:480px;margin:2rem auto;padding:1rem;">
+  <h2>Classify Channel: ` + html.EscapeString(channelName) + `</h2>
+  <p>Select an access control policy to apply to this channel. Until classified, users may not be able to join.</p>
+  <form id="classify-form">
+    <input type="hidden" name="channel_id" value="` + html.EscapeString(channelID) + `" />
+    <label for="policy_id">Policy:</label><br/>
+    <select name="policy_id" id="policy_id" required style="width:100%;padding:0.5rem;margin:0.5rem 0;">` + opts + `</select><br/>
+    <button type="submit" id="submit-btn" style="margin-top:1rem;padding:0.5rem 1rem;">Apply Policy</button>
+    <span id="submit-msg" style="margin-left:0.5rem;color:#666;"></span>
+  </form>
+  <script>
+    document.getElementById('classify-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      var btn = document.getElementById('submit-btn');
+      var msg = document.getElementById('submit-msg');
+      btn.disabled = true;
+      msg.textContent = 'Applying...';
+      var form = e.target;
+      var formData = new FormData(form);
+      var csrf = document.cookie.split(';').reduce(function(acc, c) {
+        var parts = c.trim().split('=');
+        if (parts[0] === 'MMCSRF') acc = decodeURIComponent(parts.slice(1).join('='));
+        return acc;
+      }, '');
+      fetch(window.location.pathname + window.location.search, {
+        method: 'POST',
+        body: new URLSearchParams(formData),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRF-Token': csrf
+        },
+        credentials: 'same-origin'
+      }).then(function(r) {
+        return r.text().then(function(html) {
+          document.body.innerHTML = html;
+        });
+      }).catch(function(err) {
+        btn.disabled = false;
+        msg.textContent = '';
+        alert('Request failed: ' + err.message);
+      });
+    });
+  </script>
+</body>
+</html>`
+	w.Write([]byte(page))
+}
+
+func (p *Plugin) serveClassifyError(w http.ResponseWriter, msg string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusBadRequest)
+	page := `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Error</title></head>
+<body style="font-family:sans-serif;max-width:480px;margin:2rem auto;padding:1rem;">
+  <p style="color:#c00;">` + html.EscapeString(msg) + `</p>
+  <p><a href="javascript:history.back()">Go back</a></p>
+</body>
+</html>`
+	w.Write([]byte(page))
+}
+
+func (p *Plugin) serveClassifySuccess(w http.ResponseWriter, channelName, username string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	page := `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Channel Classified</title></head>
+<body style="font-family:sans-serif;max-width:480px;margin:2rem auto;padding:1rem;">
+  <h2>Channel Classified</h2>
+  <p>Channel <strong>` + html.EscapeString(channelName) + `</strong> has been successfully classified by <strong>` + html.EscapeString(username) + `</strong>. A confirmation message was posted in the channel.</p>
+  <p>You can close this window and return to Mattermost.</p>
+</body>
+</html>`
+	w.Write([]byte(page))
 }
 
 func main() {

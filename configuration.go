@@ -45,6 +45,9 @@ type configuration struct {
 	EnableDebugLogging          bool
 	ExemptSystemAdmins          bool
 	UserAttributeMapping        string
+	// MattermostAPIToken is used for REST calls to Mattermost (e.g. access control policy search/assign).
+	// Required for the classify-channel feature. Use a Personal Access Token or System Admin token.
+	MattermostAPIToken string
 }
 
 // Clone shallow copies the configuration. Your implementation may require a deep copy if

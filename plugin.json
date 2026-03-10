@@ -2,8 +2,11 @@
   "id": "com.archtis.mattermost-policy-plugin",
   "name": "TDI Mattermost Policy Plugin",
   "description": "Enforces external policy decisions via TDI for message and channel access control",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "min_server_version": "9.0.0",
+  "webapp": {
+    "bundle_path": "webapp/dist/main.js"
+  },
   "server": {
     "executables": {
       "linux-amd64": "server/dist/plugin-linux-amd64",
@@ -51,7 +54,7 @@
       },
       {
         "key": "EnableChannelJoinPolicy",
-        "display_name": "Enable Channel Join Policy Checks",
+        "display_name": "Enable Channel Join Policy Checks (audit)",
         "type": "bool",
         "help_text": "When enabled, users joining channels will be checked against the policy",
         "default": true
@@ -86,14 +89,14 @@
       },
       {
         "key": "EnableChannelCreationPolicy",
-        "display_name": "Enable Channel Creation Policy",
+        "display_name": "Enable Channel Creation Policy (audit)",
         "type": "bool",
         "help_text": "When enabled, new channels will be auto-classified and checked against policy",
         "default": false
       },
       {
         "key": "EnableReactionPolicy",
-        "display_name": "Enable Reaction Policy Checks",
+        "display_name": "Enable Reaction Policy Checks (audit)",
         "type": "bool",
         "help_text": "When enabled, emoji reactions will be checked against the policy",
         "default": false
@@ -107,7 +110,7 @@
       },
       {
         "key": "EnableTeamJoinPolicy",
-        "display_name": "Enable Team Join Policy Checks",
+        "display_name": "Enable Team Join Policy Checks (audit)",
         "type": "bool",
         "help_text": "When enabled, users joining teams will be checked against the policy",
         "default": false
@@ -203,6 +206,14 @@
         "type": "bool",
         "help_text": "When enabled, system administrators bypass all policy checks",
         "default": false
+      },
+      {
+        "key": "MattermostAPIToken",
+        "display_name": "Mattermost API Token",
+        "type": "text",
+        "help_text": "API token for Mattermost REST API (e.g. Personal Access Token). Required for channel classification via access control policies. Used to search and assign policies.",
+        "placeholder": "",
+        "default": ""
       },
       {
         "key": "UserAttributeMapping",

@@ -1,7 +1,7 @@
 # Makefile for Mattermost Policy Plugin
 
 PLUGIN_ID ?= com.archtis.mattermost-policy-plugin
-PLUGIN_VERSION ?= 1.0.3
+PLUGIN_VERSION ?= 1.0.5
 BUNDLE_NAME ?= $(PLUGIN_ID)-$(PLUGIN_VERSION).tar.gz
 
 ## Build the plugin for all supported platforms
@@ -25,15 +25,22 @@ build-windows:
 	@echo "Building for Windows..."
 	GOOS=windows GOARCH=amd64 go build -o dist/plugin-windows-amd64.exe .
 
+## Build the webapp
+.PHONY: webapp
+webapp:
+	@echo "Building webapp..."
+	cd webapp && npm ci && npm run build
+
 ## Bundle the plugin for distribution
 ## Mattermost expects plugin.json at the ROOT of the extracted archive (no top-level folder)
 .PHONY: bundle
-bundle: build
+bundle: build webapp
 	@echo "Creating plugin bundle..."
 	rm -rf dist/bundle
-	mkdir -p dist/bundle/server/dist
+	mkdir -p dist/bundle/server/dist dist/bundle/webapp/dist
 	cp plugin.json dist/bundle/
 	cp dist/plugin-* dist/bundle/server/dist/
+	cp webapp/dist/main.js dist/bundle/webapp/dist/
 	cd dist/bundle && tar -czf ../$(BUNDLE_NAME) .
 	@echo "Plugin bundle created: dist/$(BUNDLE_NAME)"
 
