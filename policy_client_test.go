@@ -38,7 +38,10 @@ func TestCheckPolicyAllowsAndMapsLegacyMessagePath(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("unexpected method %q", r.Method)
 		}
-		if got := r.Header.Get("Authorization"); got != "Bearer test-api-key" {
+		if got := r.Header.Get(tdiAPIKeyHeader); got != "test-api-key" {
+			t.Fatalf("unexpected %s header %q", tdiAPIKeyHeader, got)
+		}
+		if got := r.Header.Get("Authorization"); got != "" {
 			t.Fatalf("unexpected Authorization header %q", got)
 		}
 		if got := r.Header.Get(correlationIDHeader); got == "" {

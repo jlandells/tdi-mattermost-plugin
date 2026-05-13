@@ -28,6 +28,7 @@ const (
 	botDescription = "Posts TDI policy enforcement notices."
 
 	correlationIDHeader = "X-Correlation-ID"
+	tdiAPIKeyHeader     = "X-TDI-Key"
 )
 
 // Plugin implements the interface expected by the Mattermost server to communicate between the server and plugin processes.
@@ -1251,8 +1252,8 @@ func (p *Plugin) checkTDIPolicy(req interface{}, policyPath string) (bool, strin
 
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set(correlationIDHeader, correlationID)
-	if config.TDIAPIKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+config.TDIAPIKey)
+	if strings.TrimSpace(config.TDIAPIKey) != "" {
+		httpReq.Header.Set(tdiAPIKeyHeader, strings.TrimSpace(config.TDIAPIKey))
 	}
 
 	// Send request

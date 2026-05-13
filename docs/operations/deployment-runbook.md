@@ -10,6 +10,7 @@ Mattermost environment.
 - Enabled policy list.
 - Policy service authentication method.
 - Mattermost API token owner, scope, and rotation process.
+- Policy service API key owner and rotation process, if `TDIAPIKey` is used.
 - Plugin bundle version and checksum.
 
 ## Preflight Checks
@@ -49,6 +50,13 @@ Mattermost environment.
 2. Update the plugin `MattermostAPIToken` setting.
 3. Test channel policy search and assignment.
 4. Revoke the old token.
+
+For policy service API keys:
+
+1. Create a replacement policy service API key.
+2. Update the plugin `TDIAPIKey` setting.
+3. Confirm policy requests include `X-TDI-Key` and receive valid responses.
+4. Revoke the old policy service API key.
 
 ## Failure Modes
 

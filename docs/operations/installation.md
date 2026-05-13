@@ -18,7 +18,8 @@ This guide covers installing and configuring the Mattermost plugin.
 4. Open the plugin settings page and configure:
    - `TDIURL`
    - `TDINamespace`
-   - `TDIAPIKey`, if required by the policy service
+   - `TDIAPIKey`, if required by the policy service. The plugin sends this as
+     `X-TDI-Key`, not as an `Authorization` bearer token.
    - policy toggles for the endpoints available to this plugin
 
 ## Build Locally
@@ -42,6 +43,12 @@ For every enabled policy, the plugin sends requests to:
 
 ```text
 {TDIURL}/ns/{TDINamespace}/policy/v1/{policy-path}
+```
+
+When `TDIAPIKey` is configured, requests include:
+
+```http
+X-TDI-Key: <configured TDIAPIKey>
 ```
 
 This repository intentionally does not document how to install or configure the

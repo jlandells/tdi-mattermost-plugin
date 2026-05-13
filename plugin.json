@@ -2,7 +2,7 @@
   "id": "com.archtis.mattermost-policy-plugin",
   "name": "TDI Mattermost Policy Plugin",
   "description": "Enforces external policy decisions via TDI for message and channel access control",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "min_server_version": "9.0.0",
   "webapp": {
     "bundle_path": "webapp/dist/main.js"
@@ -41,9 +41,10 @@
         "key": "TDIAPIKey",
         "display_name": "TDI API Key",
         "type": "text",
-        "help_text": "API key for authenticating with TDI (optional)",
+        "help_text": "API key for authenticating with the policy service. When set, the plugin sends this value in the X-TDI-Key request header.",
         "placeholder": "",
-        "default": ""
+        "default": "",
+        "secret": true
       },
       {
         "key": "EnableMessagePolicy",
@@ -221,7 +222,8 @@
         "type": "text",
         "help_text": "API token for Mattermost REST API (e.g. Personal Access Token). Required for channel classification via access control policies. Used to search and assign policies.",
         "placeholder": "",
-        "default": ""
+        "default": "",
+        "secret": true
       },
       {
         "key": "UserAttributeMapping",

@@ -18,6 +18,16 @@ Plugin request URL pattern:
 {TDIURL}/ns/{TDINamespace}/policy/v1/{policy-path}
 ```
 
+Request headers:
+
+```http
+Content-Type: application/json
+X-Correlation-ID: <generated-correlation-id>
+X-TDI-Key: <configured TDIAPIKey>
+```
+
+`X-TDI-Key` is sent only when `TDIAPIKey` is configured.
+
 Expected allow response:
 
 ```json
@@ -48,6 +58,8 @@ Expected deny response:
   already-completed Mattermost actions.
 - Include a correlation ID in every policy request and log entry. The plugin
   sends this to the policy service in the `X-Correlation-ID` header.
+- If `TDIAPIKey` is configured, send it only in `X-TDI-Key`. Do not send it as
+  an `Authorization` bearer token.
 - Do not log raw policy payloads. Debug logs must redact message content,
   channel headers, user attributes, email addresses, file hashes, API keys,
   authorization values, and denial reasons.
