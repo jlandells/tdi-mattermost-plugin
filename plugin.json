@@ -2,7 +2,7 @@
   "id": "com.archtis.mattermost-policy-plugin",
   "name": "TDI Mattermost Policy Plugin",
   "description": "Enforces external policy decisions via TDI for message and channel access control",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "min_server_version": "9.0.0",
   "webapp": {
     "bundle_path": "webapp/dist/main.js"
@@ -51,14 +51,14 @@
         "display_name": "Enable Message Policy Checks",
         "type": "bool",
         "help_text": "When enabled, all messages will be checked against the policy before posting",
-        "default": true
+        "default": false
       },
       {
         "key": "EnableChannelJoinPolicy",
         "display_name": "Enable Channel Join Policy Checks (audit)",
         "type": "bool",
         "help_text": "When enabled, users joining channels will be checked against the policy",
-        "default": true
+        "default": false
       },
       {
         "key": "EnableMessageEditPolicy",

@@ -2,8 +2,13 @@
 
 PLUGIN_ID ?= com.archtis.mattermost-policy-plugin
 PLUGIN_VERSION ?= $(shell node -p "require('./plugin.json').version")
-BUNDLE_NAME ?= $(PLUGIN_ID)-$(PLUGIN_VERSION).tar.gz
 INCLUDE_WEBAPP ?= false
+ifeq ($(INCLUDE_WEBAPP),true)
+BUNDLE_SUFFIX ?= -webapp
+else
+BUNDLE_SUFFIX ?=
+endif
+BUNDLE_NAME ?= $(PLUGIN_ID)-$(PLUGIN_VERSION)$(BUNDLE_SUFFIX).tar.gz
 
 ## Build the plugin for all supported platforms
 .PHONY: build
@@ -80,7 +85,7 @@ help:
 	@echo "Available targets:"
 	@echo "  build        - Build plugin for all platforms"
 	@echo "  bundle       - Create server-only distributable plugin bundle"
-	@echo "  bundle INCLUDE_WEBAPP=true - Create bundle with internal webapp"
+	@echo "  bundle INCLUDE_WEBAPP=true - Create internal webapp bundle with -webapp suffix"
 	@echo "  test         - Run tests"
 	@echo "  verify       - Run Go tests and webapp build"
 	@echo "  clean        - Remove build artifacts"

@@ -28,7 +28,7 @@ your environment.
 - Node.js 22 for verification, release version checks, and optional webapp
   bundles.
 - Reachable external policy endpoints matching the plugin's configured TDI URL,
-  namespace, and enabled policy paths.
+  namespace, and enabled policy paths when policy checks are enabled.
 
 ## Install
 
@@ -41,6 +41,10 @@ Mattermost:
 4. Enable the plugin.
 5. Configure the policy service URL, namespace, optional API key, and policy
    toggles.
+
+The plugin is safe to enable before policy-service configuration is written.
+Policy checks are disabled by default and become active only after the
+corresponding policy toggles are enabled.
 
 See `docs/operations/installation.md` for full setup and verification steps.
 
@@ -55,6 +59,12 @@ Bundles are written to `dist/`. By default, `make bundle` creates the public
 server-only plugin bundle and removes the `webapp` manifest entry from the
 packaged `plugin.json`.
 
+Default public bundle:
+
+```text
+dist/com.archtis.mattermost-policy-plugin-<version>.tar.gz
+```
+
 Release builds use the version from `plugin.json` unless `PLUGIN_VERSION` is
 provided:
 
@@ -67,6 +77,12 @@ classification UI:
 
 ```bash
 make bundle INCLUDE_WEBAPP=true
+```
+
+Internal webapp bundle:
+
+```text
+dist/com.archtis.mattermost-policy-plugin-<version>-webapp.tar.gz
 ```
 
 ## Release

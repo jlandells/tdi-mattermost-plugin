@@ -9,9 +9,10 @@ func TestValidateConfiguration(t *testing.T) {
 	t.Parallel()
 
 	valid := &configuration{
-		TDIURL:        "https://tdi.example.com",
-		TDINamespace:  "mattermost-policies",
-		PolicyTimeout: 5,
+		TDIURL:              "https://tdi.example.com",
+		TDINamespace:        "mattermost-policies",
+		PolicyTimeout:       5,
+		EnableMessagePolicy: true,
 	}
 
 	tests := []struct {
@@ -20,47 +21,53 @@ func TestValidateConfiguration(t *testing.T) {
 		wantErr string
 	}{
 		{name: "valid", config: valid},
+		{name: "default install config without policy service", config: &configuration{}},
 		{name: "nil", config: nil, wantErr: "configuration is required"},
 		{
-			name: "missing TDI URL",
+			name: "missing TDI URL with policy enabled",
 			config: &configuration{
-				TDINamespace:  "mattermost-policies",
-				PolicyTimeout: 5,
+				TDINamespace:        "mattermost-policies",
+				PolicyTimeout:       5,
+				EnableMessagePolicy: true,
 			},
-			wantErr: "TDIURL is required",
+			wantErr: "TDIURL is required when policy checks are enabled",
 		},
 		{
 			name: "relative TDI URL",
 			config: &configuration{
-				TDIURL:        "tdi.example.com",
-				TDINamespace:  "mattermost-policies",
-				PolicyTimeout: 5,
+				TDIURL:              "tdi.example.com",
+				TDINamespace:        "mattermost-policies",
+				PolicyTimeout:       5,
+				EnableMessagePolicy: true,
 			},
 			wantErr: "TDIURL must be an absolute URL",
 		},
 		{
-			name: "missing namespace",
+			name: "missing namespace with policy enabled",
 			config: &configuration{
-				TDIURL:        "https://tdi.example.com",
-				PolicyTimeout: 5,
+				TDIURL:              "https://tdi.example.com",
+				PolicyTimeout:       5,
+				EnableMessagePolicy: true,
 			},
-			wantErr: "TDINamespace is required",
+			wantErr: "TDINamespace is required when policy checks are enabled",
 		},
 		{
-			name: "zero timeout",
+			name: "negative timeout",
 			config: &configuration{
-				TDIURL:        "https://tdi.example.com",
-				TDINamespace:  "mattermost-policies",
-				PolicyTimeout: 0,
+				TDIURL:              "https://tdi.example.com",
+				TDINamespace:        "mattermost-policies",
+				PolicyTimeout:       -1,
+				EnableMessagePolicy: true,
 			},
-			wantErr: "PolicyTimeout must be greater than 0",
+			wantErr: "PolicyTimeout must be zero or greater",
 		},
 		{
 			name: "excessive timeout",
 			config: &configuration{
-				TDIURL:        "https://tdi.example.com",
-				TDINamespace:  "mattermost-policies",
-				PolicyTimeout: 61,
+				TDIURL:              "https://tdi.example.com",
+				TDINamespace:        "mattermost-policies",
+				PolicyTimeout:       61,
+				EnableMessagePolicy: true,
 			},
 			wantErr: "PolicyTimeout must be 60 seconds or less",
 		},
@@ -70,6 +77,7 @@ func TestValidateConfiguration(t *testing.T) {
 				TDIURL:               "https://tdi.example.com",
 				TDINamespace:         "mattermost-policies",
 				PolicyTimeout:        5,
+				EnableMessagePolicy:  true,
 				UserAttributeMapping: "{bad-json",
 			},
 			wantErr: "UserAttributeMapping must be valid JSON object",
@@ -80,6 +88,7 @@ func TestValidateConfiguration(t *testing.T) {
 				TDIURL:                 "https://tdi.example.com",
 				TDINamespace:           "mattermost-policies",
 				PolicyTimeout:          5,
+				EnableMessagePolicy:    true,
 				MaxFileInspectionBytes: -1,
 			},
 			wantErr: "MaxFileInspectionBytes must be zero or greater",
@@ -90,6 +99,7 @@ func TestValidateConfiguration(t *testing.T) {
 				TDIURL:                 "https://tdi.example.com",
 				TDINamespace:           "mattermost-policies",
 				PolicyTimeout:          5,
+				EnableMessagePolicy:    true,
 				MaxFileInspectionBytes: maxFileInspectionBytesLimit + 1,
 			},
 			wantErr: "MaxFileInspectionBytes must be 1073741824 bytes or less",

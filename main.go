@@ -1218,7 +1218,7 @@ func (p *Plugin) checkTDIPolicy(req interface{}, policyPath string) (bool, strin
 	correlationID := newCorrelationID()
 
 	// Validate configuration
-	if err := p.validateConfiguration(config); err != nil {
+	if err := validatePolicyServiceConfiguration(config); err != nil {
 		p.logError("TDI not configured - denying by default (fail-secure)", "correlation_id", correlationID, "error", err.Error())
 		return false, "Policy service not configured"
 	}

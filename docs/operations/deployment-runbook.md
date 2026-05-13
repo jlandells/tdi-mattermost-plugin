@@ -17,6 +17,7 @@ Mattermost environment.
 
 - Plugin bundle checksum matches the release `SHA256SUMS` file.
 - Plugin bundle installs and starts on the target Mattermost version.
+- Plugin can be enabled before policy-service settings are written.
 - Every enabled policy has a matching external policy endpoint.
 - Mattermost can reach the policy service from the server network.
 - Access control policy APIs are available if channel classification is enabled.

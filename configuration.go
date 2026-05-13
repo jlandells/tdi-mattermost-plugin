@@ -132,25 +132,18 @@ func (p *Plugin) validateConfiguration(configuration *configuration) error {
 		return errors.New("configuration is required")
 	}
 
-	if strings.TrimSpace(configuration.TDIURL) == "" {
-		return errors.New("TDIURL is required")
-	}
-
-	tdiURL, err := url.ParseRequestURI(configuration.TDIURL)
-	if err != nil || tdiURL.Scheme == "" || tdiURL.Host == "" {
-		return errors.New("TDIURL must be an absolute URL")
-	}
-
-	if strings.TrimSpace(configuration.TDINamespace) == "" {
-		return errors.New("TDINamespace is required")
-	}
-
-	if configuration.PolicyTimeout <= 0 {
-		return errors.New("PolicyTimeout must be greater than 0")
+	if configuration.PolicyTimeout < 0 {
+		return errors.New("PolicyTimeout must be zero or greater")
 	}
 
 	if configuration.PolicyTimeout > 60 {
 		return errors.New("PolicyTimeout must be 60 seconds or less")
+	}
+
+	if configuration.policyServiceEnabled() {
+		if err := validatePolicyServiceConfiguration(configuration); err != nil {
+			return err
+		}
 	}
 
 	if configuration.MaxFileInspectionBytes < 0 {
@@ -171,6 +164,27 @@ func (p *Plugin) validateConfiguration(configuration *configuration) error {
 	return nil
 }
 
+func validatePolicyServiceConfiguration(configuration *configuration) error {
+	if configuration == nil {
+		return errors.New("configuration is required")
+	}
+
+	if strings.TrimSpace(configuration.TDIURL) == "" {
+		return errors.New("TDIURL is required when policy checks are enabled")
+	}
+
+	tdiURL, err := url.ParseRequestURI(configuration.TDIURL)
+	if err != nil || tdiURL.Scheme == "" || tdiURL.Host == "" {
+		return errors.New("TDIURL must be an absolute URL")
+	}
+
+	if strings.TrimSpace(configuration.TDINamespace) == "" {
+		return errors.New("TDINamespace is required when policy checks are enabled")
+	}
+
+	return nil
+}
+
 func (c *configuration) maxFileInspectionBytes() int64 {
 	if c == nil || c.MaxFileInspectionBytes == 0 {
 		return defaultMaxFileInspectionBytes
@@ -183,4 +197,31 @@ func (c *configuration) policyTimeout() int {
 		return defaultPolicyTimeout
 	}
 	return c.PolicyTimeout
+}
+
+func (c *configuration) policyServiceEnabled() bool {
+	if c == nil {
+		return false
+	}
+
+	return c.EnableMessagePolicy ||
+		c.EnableChannelJoinPolicy ||
+		c.EnableMessageEditPolicy ||
+		c.EnableMessageDeletePolicy ||
+		c.EnableFileUploadPolicy ||
+		c.EnableLoginPolicy ||
+		c.EnableChannelCreationPolicy ||
+		c.EnableReactionPolicy ||
+		c.EnableUserCreatedPolicy ||
+		c.EnableTeamJoinPolicy ||
+		c.EnableUserLeftTeamPolicy ||
+		c.EnableUserLeftChannelPolicy ||
+		c.EnableMessagePostedPolicy ||
+		c.EnableMessageUpdatedPolicy ||
+		c.EnableUserLoggedInPolicy ||
+		c.EnableMessagesConsumedPolicy ||
+		c.EnableUserDeactivatedPolicy ||
+		c.EnablePushNotificationPolicy ||
+		c.EnableConfigValidationPolicy ||
+		c.EnableSAMLLoginPolicy
 }

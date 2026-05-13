@@ -6,7 +6,8 @@ This guide covers installing and configuring the Mattermost plugin.
 
 - Mattermost Server `9.0.0` or later.
 - System administrator access in Mattermost.
-- Reachable external policy endpoints for each enabled policy path.
+- Reachable external policy endpoints for each enabled policy path when policy
+  checks are enabled.
 - A Mattermost API token if channel classification is enabled.
 
 ## Install From Release
@@ -22,6 +23,10 @@ This guide covers installing and configuring the Mattermost plugin.
      `X-TDI-Key`, not as an `Authorization` bearer token.
    - policy toggles for the endpoints available to this plugin
 
+All policy toggles are disabled by default. This allows setup scripts to enable
+the plugin first, then write policy-service settings, then enable specific
+policy checks.
+
 ## Build Locally
 
 ```bash
@@ -35,6 +40,12 @@ sidebar UI, run:
 
 ```bash
 make bundle INCLUDE_WEBAPP=true
+```
+
+The internal bundle gets a `-webapp` filename suffix:
+
+```text
+dist/com.archtis.mattermost-policy-plugin-<version>-webapp.tar.gz
 ```
 
 ## Policy Endpoints

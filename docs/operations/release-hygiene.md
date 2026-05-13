@@ -47,6 +47,12 @@ For internal deployments that need the optional Mattermost webapp:
 make bundle INCLUDE_WEBAPP=true
 ```
 
+Internal webapp bundles use a distinct filename:
+
+```text
+dist/com.archtis.mattermost-policy-plugin-<version>-webapp.tar.gz
+```
+
 CI writes `dist/SHA256SUMS` beside bundle artifacts so releases can be verified
 after download.
 
