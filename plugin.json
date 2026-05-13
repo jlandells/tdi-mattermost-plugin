@@ -2,7 +2,7 @@
   "id": "com.archtis.mattermost-policy-plugin",
   "name": "TDI Mattermost Policy Plugin",
   "description": "Enforces external policy decisions via TDI for message and channel access control",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "min_server_version": "9.0.0",
   "webapp": {
     "bundle_path": "webapp/dist/main.js"
