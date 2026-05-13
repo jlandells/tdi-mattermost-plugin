@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -20,6 +22,14 @@ import (
 	"github.com/mattermost/mattermost/server/public/plugin"
 )
 
+const (
+	botUsername    = "tdi-policy-bot"
+	botDisplayName = "TDI Policy Bot"
+	botDescription = "Posts TDI policy enforcement notices."
+
+	correlationIDHeader = "X-Correlation-ID"
+)
+
 // Plugin implements the interface expected by the Mattermost server to communicate between the server and plugin processes.
 type Plugin struct {
 	plugin.MattermostPlugin
@@ -27,6 +37,8 @@ type Plugin struct {
 	configurationLock sync.RWMutex
 	httpClient        *http.Client
 	router            *http.ServeMux
+	botUserIDValue    string
+	botUserIDLock     sync.RWMutex
 }
 
 // FileAttachmentInfo describes an attached file for policy decisions
@@ -76,6 +88,10 @@ func (p *Plugin) OnActivate() error {
 	p.router.HandleFunc("/classify-channel", p.handleClassifyChannel)
 	p.router.HandleFunc("/api/policies", p.handleAPIPolicies)
 	p.router.HandleFunc("/api/classify", p.handleAPIClassify)
+
+	if err := p.ensureBotUser(); err != nil {
+		p.logError("Failed to ensure plugin bot user; policy notices will be logged but not sent as DMs", "error", err.Error())
+	}
 
 	p.API.LogInfo("Mattermost Policy Plugin activated",
 		"tdi_url", config.TDIURL,
@@ -252,96 +268,15 @@ func (p *Plugin) UserHasJoinedChannel(c *plugin.Context, channelMember *model.Ch
 
 // checkPolicy calls TDI to check if an action is allowed
 func (p *Plugin) checkPolicy(req PolicyRequest, policyType string) (bool, string) {
-	config := p.getConfiguration()
-
-	// Validate configuration
-	if config.TDIURL == "" || config.TDINamespace == "" {
-		p.API.LogError("TDI not configured - denying by default (fail-secure)")
-		return false, "Policy service not configured"
+	policyPath := policyType
+	switch policyType {
+	case "message":
+		policyPath = "message/check"
+	case "channel_join":
+		policyPath = "channel/join"
 	}
 
-	// Build TDI URL
-	var endpoint string
-	if policyType == "message" {
-		endpoint = fmt.Sprintf("%s/ns/%s/policy/v1/message/check",
-			strings.TrimSuffix(config.TDIURL, "/"),
-			config.TDINamespace)
-	} else {
-		endpoint = fmt.Sprintf("%s/ns/%s/policy/v1/channel/join",
-			strings.TrimSuffix(config.TDIURL, "/"),
-			config.TDINamespace)
-	}
-
-	// Marshal request
-	jsonData, err := json.Marshal(req)
-	if err != nil {
-		p.API.LogError("Failed to marshal policy request", "error", err.Error())
-		return false, "Internal error processing policy request"
-	}
-
-	if config.EnableDebugLogging {
-		p.API.LogDebug("Sending policy request", "endpoint", endpoint, "payload", string(jsonData))
-	}
-
-	// Create HTTP request
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.PolicyTimeout)*time.Second)
-	defer cancel()
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBuffer(jsonData))
-	if err != nil {
-		p.API.LogError("Failed to create HTTP request", "error", err.Error())
-		return false, "Internal error contacting policy service"
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	if config.TDIAPIKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+config.TDIAPIKey)
-	}
-
-	// Send request
-	resp, err := p.httpClient.Do(httpReq)
-	if err != nil {
-		p.API.LogError("Failed to contact TDI", "error", err.Error(), "endpoint", endpoint)
-		return false, "Policy service unavailable"
-	}
-	defer resp.Body.Close()
-
-	// Read response
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		p.API.LogError("Failed to read policy response", "error", err.Error())
-		return false, "Error reading policy response"
-	}
-
-	if config.EnableDebugLogging {
-		p.API.LogDebug("Policy response received", "status", resp.StatusCode, "body", string(body))
-	}
-
-	// Check HTTP status
-	if resp.StatusCode != http.StatusOK {
-		p.API.LogError("Policy service returned error", "status", resp.StatusCode, "body", string(body))
-		return false, "Policy service error"
-	}
-
-	// Parse response
-	var policyResp PolicyResponse
-	if err := json.Unmarshal(body, &policyResp); err != nil {
-		p.API.LogError("Failed to parse policy response", "error", err.Error())
-		return false, "Invalid policy response"
-	}
-
-	// Check response
-	if policyResp.Action == "continue" {
-		return true, ""
-	}
-
-	// Extract denial reason
-	reason := "Access denied by policy"
-	if reasonStr, ok := policyResp.Result["reason"].(string); ok && reasonStr != "" {
-		reason = reasonStr
-	}
-
-	return false, reason
+	return p.checkTDIPolicy(req, policyPath)
 }
 
 // extractUserAttributes extracts user attributes from various sources for TDI policy evaluation.
@@ -504,8 +439,14 @@ func (p *Plugin) mergeCustomProfileAttributes(userID string, attributes map[stri
 
 // sendDenialMessage sends a DM to a user explaining why their action was denied
 func (p *Plugin) sendDenialMessage(userID, channelName, reason string) {
+	botID := p.botUserID()
+	if botID == "" {
+		p.logError("Skipping denial DM because plugin bot user is not available", "user_id", userID, "channel", channelName)
+		return
+	}
+
 	// Get or create DM channel with user
-	dmChannel, err := p.API.GetDirectChannel(userID, p.botUserID())
+	dmChannel, err := p.API.GetDirectChannel(userID, botID)
 	if err != nil {
 		p.API.LogError("Failed to get DM channel", "error", err.Error())
 		return
@@ -514,7 +455,7 @@ func (p *Plugin) sendDenialMessage(userID, channelName, reason string) {
 	message := fmt.Sprintf("You were removed from channel **%s** because: %s", channelName, reason)
 
 	post := &model.Post{
-		UserId:    p.botUserID(),
+		UserId:    botID,
 		ChannelId: dmChannel.Id,
 		Message:   message,
 	}
@@ -524,12 +465,41 @@ func (p *Plugin) sendDenialMessage(userID, channelName, reason string) {
 	}
 }
 
-// botUserID returns the bot user ID (you'd need to create a bot user for the plugin)
+// ensureBotUser creates or updates the plugin bot used for policy notices.
+func (p *Plugin) ensureBotUser() error {
+	if p.API == nil {
+		return fmt.Errorf("plugin API is not available")
+	}
+
+	botID, err := p.API.EnsureBotUser(&model.Bot{
+		Username:    botUsername,
+		DisplayName: botDisplayName,
+		Description: botDescription,
+	})
+	if err != nil {
+		p.setBotUserID("")
+		return err
+	}
+	if botID == "" {
+		p.setBotUserID("")
+		return fmt.Errorf("Mattermost returned empty bot user ID")
+	}
+
+	p.setBotUserID(botID)
+	return nil
+}
+
+func (p *Plugin) setBotUserID(botID string) {
+	p.botUserIDLock.Lock()
+	defer p.botUserIDLock.Unlock()
+	p.botUserIDValue = botID
+}
+
+// botUserID returns the cached plugin bot user ID.
 func (p *Plugin) botUserID() string {
-	// In a real implementation, you'd create a bot user on activation
-	// and store its ID. For simplicity, using empty string here.
-	// The plugin should use p.API.CreateBot() to create a proper bot
-	return ""
+	p.botUserIDLock.RLock()
+	defer p.botUserIDLock.RUnlock()
+	return p.botUserIDValue
 }
 
 // ============================================================================
@@ -692,16 +662,16 @@ func (p *Plugin) FileWillBeUploaded(c *plugin.Context, info *model.FileInfo, fil
 		}
 	}
 
-	// Read file data for policy check (and to compute hash)
-	fileData, readErr := io.ReadAll(file)
+	spooledFile, fileHash, readErr := p.spoolAndHashUpload(file, config.maxFileInspectionBytes())
 	if readErr != nil {
-		p.API.LogError("Failed to read file", "error", readErr.Error())
-		return nil, "Failed to process file"
+		p.API.LogError("Failed to spool uploaded file", "error", readErr.Error())
+		return nil, readErr.Error()
 	}
-
-	// Compute file hash
-	hash := sha256.Sum256(fileData)
-	fileHash := fmt.Sprintf("%x", hash)
+	defer func() {
+		name := spooledFile.Name()
+		_ = spooledFile.Close()
+		_ = os.Remove(name)
+	}()
 
 	// Build policy request
 	policyReq := map[string]interface{}{
@@ -731,8 +701,13 @@ func (p *Plugin) FileWillBeUploaded(c *plugin.Context, info *model.FileInfo, fil
 		return nil, reason
 	}
 
+	if _, seekErr := spooledFile.Seek(0, io.SeekStart); seekErr != nil {
+		p.API.LogError("Failed to rewind uploaded file", "error", seekErr.Error())
+		return nil, "Failed to process file"
+	}
+
 	// Write file to output
-	_, writeErr := io.Copy(output, bytes.NewReader(fileData))
+	_, writeErr := io.Copy(output, spooledFile)
 	if writeErr != nil {
 		p.API.LogError("Failed to write file", "error", writeErr.Error())
 		return nil, "Failed to process file"
@@ -746,6 +721,36 @@ func (p *Plugin) FileWillBeUploaded(c *plugin.Context, info *model.FileInfo, fil
 	}
 
 	return info, ""
+}
+
+func (p *Plugin) spoolAndHashUpload(file io.Reader, maxBytes int64) (*os.File, string, error) {
+	if maxBytes <= 0 {
+		maxBytes = defaultMaxFileInspectionBytes
+	}
+
+	tmpFile, err := os.CreateTemp("", "mattermost-policy-upload-*")
+	if err != nil {
+		return nil, "", fmt.Errorf("Failed to process file")
+	}
+
+	hasher := sha256.New()
+	limitedReader := &io.LimitedReader{R: file, N: maxBytes + 1}
+	written, copyErr := io.Copy(io.MultiWriter(tmpFile, hasher), limitedReader)
+	if copyErr != nil {
+		name := tmpFile.Name()
+		_ = tmpFile.Close()
+		_ = os.Remove(name)
+		return nil, "", fmt.Errorf("Failed to process file")
+	}
+
+	if written > maxBytes {
+		name := tmpFile.Name()
+		_ = tmpFile.Close()
+		_ = os.Remove(name)
+		return nil, "", fmt.Errorf("File exceeds maximum inspection size of %d bytes", maxBytes)
+	}
+
+	return tmpFile, fmt.Sprintf("%x", hasher.Sum(nil)), nil
 }
 
 // UserWillLogIn is invoked before a user logs in
@@ -842,10 +847,10 @@ func (p *Plugin) ChannelHasBeenCreated(c *plugin.Context, channel *model.Channel
 
 		// Auto-classify or modify channel based on policy
 		// For example, add clearance requirement to header
-		if strings.Contains(strings.ToLower(channel.Name), "secret") {
-			channel.Header = "CLEARANCE_REQUIRED=SECRET"
-			p.API.UpdateChannel(channel)
-		}
+		// if strings.Contains(strings.ToLower(channel.Name), "secret") {
+		// 	channel.Header = "CLEARANCE_REQUIRED=SECRET"
+		// 	p.API.UpdateChannel(channel)
+		// }
 
 		// Notify creator
 		p.sendChannelCreationNotice(user.Id, channel.Name, reason)
@@ -853,40 +858,46 @@ func (p *Plugin) ChannelHasBeenCreated(c *plugin.Context, channel *model.Channel
 	}
 
 	// Auto-classification logic
-	classification := p.classifyChannelByName(channel.Name)
-	if classification != "" {
-		channel.Header = fmt.Sprintf("CLEARANCE_REQUIRED=%s", classification)
-		p.API.UpdateChannel(channel)
+	// classification := p.classifyChannelByName(channel.Name)
+	// if classification != "" {
+	// 	channel.Header = fmt.Sprintf("CLEARANCE_REQUIRED=%s", classification)
+	// 	p.API.UpdateChannel(channel)
 
-		if config.EnableDebugLogging {
-			p.API.LogDebug("Auto-classified channel",
-				"channel", channel.Name,
-				"classification", classification,
-			)
-		}
-	}
+	// 	if config.EnableDebugLogging {
+	// 		p.API.LogDebug("Auto-classified channel",
+	// 			"channel", channel.Name,
+	// 			"classification", classification,
+	// 		)
+	// 	}
+	// }
 }
 
-// classifyChannelByName determines classification based on channel name
-func (p *Plugin) classifyChannelByName(name string) string {
-	nameLower := strings.ToLower(name)
+// // classifyChannelByName determines classification based on channel name
+// func (p *Plugin) classifyChannelByName(name string) string {
+// 	nameLower := strings.ToLower(name)
 
-	if strings.Contains(nameLower, "ts-") || strings.Contains(nameLower, "topsecret") {
-		return "TOP SECRET"
-	}
-	if strings.Contains(nameLower, "secret") || strings.Contains(nameLower, "classified") {
-		return "SECRET"
-	}
-	if strings.Contains(nameLower, "confidential") {
-		return "CONFIDENTIAL"
-	}
+// 	if strings.Contains(nameLower, "ts-") || strings.Contains(nameLower, "topsecret") {
+// 		return "TOP SECRET"
+// 	}
+// 	if strings.Contains(nameLower, "secret") || strings.Contains(nameLower, "classified") {
+// 		return "SECRET"
+// 	}
+// 	if strings.Contains(nameLower, "confidential") {
+// 		return "CONFIDENTIAL"
+// 	}
 
-	return ""
-}
+// 	return ""
+// }
 
 // sendChannelCreationNotice sends a DM about channel creation policy
 func (p *Plugin) sendChannelCreationNotice(userID, channelName, notice string) {
-	dmChannel, err := p.API.GetDirectChannel(userID, p.botUserID())
+	botID := p.botUserID()
+	if botID == "" {
+		p.logError("Skipping channel creation notice because plugin bot user is not available", "user_id", userID, "channel", channelName)
+		return
+	}
+
+	dmChannel, err := p.API.GetDirectChannel(userID, botID)
 	if err != nil {
 		p.API.LogError("Failed to get DM channel", "error", err.Error())
 		return
@@ -895,7 +906,7 @@ func (p *Plugin) sendChannelCreationNotice(userID, channelName, notice string) {
 	message := fmt.Sprintf("**Channel Creation Notice**\n\nChannel: **%s**\n\n%s", channelName, notice)
 
 	post := &model.Post{
-		UserId:    p.botUserID(),
+		UserId:    botID,
 		ChannelId: dmChannel.Id,
 		Message:   message,
 	}
@@ -1234,29 +1245,37 @@ func (p *Plugin) OnSAMLLogin(c *plugin.Context, user *model.User, assertion *sam
 
 // checkGenericPolicy checks a generic policy with any request structure
 func (p *Plugin) checkGenericPolicy(req map[string]interface{}, policyPath string) (bool, string) {
+	return p.checkTDIPolicy(req, policyPath)
+}
+
+// checkTDIPolicy sends a policy decision request to TDI and interprets the
+// gateway/workflow response. It fails secure for malformed config, transport
+// errors, non-200 responses, invalid JSON, and unknown policy actions.
+func (p *Plugin) checkTDIPolicy(req interface{}, policyPath string) (bool, string) {
 	config := p.getConfiguration()
+	correlationID := newCorrelationID()
 
 	// Validate configuration
-	if config.TDIURL == "" || config.TDINamespace == "" {
-		p.API.LogError("TDI not configured - denying by default (fail-secure)")
+	if err := p.validateConfiguration(config); err != nil {
+		p.logError("TDI not configured - denying by default (fail-secure)", "correlation_id", correlationID, "error", err.Error())
 		return false, "Policy service not configured"
 	}
 
 	// Build TDI URL
 	endpoint := fmt.Sprintf("%s/ns/%s/policy/v1/%s",
 		strings.TrimSuffix(config.TDIURL, "/"),
-		config.TDINamespace,
-		policyPath)
+		url.PathEscape(config.TDINamespace),
+		strings.TrimPrefix(policyPath, "/"))
 
 	// Marshal request
 	jsonData, err := json.Marshal(req)
 	if err != nil {
-		p.API.LogError("Failed to marshal policy request", "error", err.Error())
+		p.logError("Failed to marshal policy request", "correlation_id", correlationID, "error", err.Error())
 		return false, "Internal error processing policy request"
 	}
 
 	if config.EnableDebugLogging {
-		p.API.LogDebug("Sending policy request", "endpoint", endpoint, "payload", string(jsonData))
+		p.logDebug("Sending policy request", "correlation_id", correlationID, "endpoint", endpoint, "policy_path", policyPath, "payload", redactedPolicyPayload(jsonData))
 	}
 
 	// Create HTTP request
@@ -1265,19 +1284,23 @@ func (p *Plugin) checkGenericPolicy(req map[string]interface{}, policyPath strin
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
-		p.API.LogError("Failed to create HTTP request", "error", err.Error())
+		p.logError("Failed to create HTTP request", "correlation_id", correlationID, "error", err.Error())
 		return false, "Internal error contacting policy service"
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set(correlationIDHeader, correlationID)
 	if config.TDIAPIKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+config.TDIAPIKey)
 	}
 
 	// Send request
+	if p.httpClient == nil {
+		p.httpClient = &http.Client{Timeout: time.Duration(config.PolicyTimeout) * time.Second}
+	}
 	resp, err := p.httpClient.Do(httpReq)
 	if err != nil {
-		p.API.LogError("Failed to contact TDI", "error", err.Error(), "endpoint", endpoint)
+		p.logError("Failed to contact TDI", "correlation_id", correlationID, "error", err.Error(), "endpoint", endpoint)
 		return false, "Policy service unavailable"
 	}
 	defer resp.Body.Close()
@@ -1285,39 +1308,132 @@ func (p *Plugin) checkGenericPolicy(req map[string]interface{}, policyPath strin
 	// Read response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		p.API.LogError("Failed to read policy response", "error", err.Error())
+		p.logError("Failed to read policy response", "correlation_id", correlationID, "error", err.Error())
 		return false, "Error reading policy response"
 	}
 
 	if config.EnableDebugLogging {
-		p.API.LogDebug("Policy response received", "status", resp.StatusCode, "body", string(body))
+		p.logDebug("Policy response received", "correlation_id", correlationID, "status", resp.StatusCode, "body", redactedPolicyPayload(body))
 	}
 
 	// Check HTTP status
 	if resp.StatusCode != http.StatusOK {
-		p.API.LogError("Policy service returned error", "status", resp.StatusCode, "body", string(body))
+		p.logError("Policy service returned error", "correlation_id", correlationID, "status", resp.StatusCode, "body", redactedPolicyPayload(body))
 		return false, "Policy service error"
 	}
 
 	// Parse response
 	var policyResp PolicyResponse
 	if err := json.Unmarshal(body, &policyResp); err != nil {
-		p.API.LogError("Failed to parse policy response", "error", err.Error())
+		p.logError("Failed to parse policy response", "correlation_id", correlationID, "error", err.Error())
 		return false, "Invalid policy response"
 	}
 
 	// Check response
-	if policyResp.Action == "continue" {
+	switch policyResp.Action {
+	case "continue":
 		return true, ""
+	case "reject":
+		reason := "Access denied by policy"
+		if reasonStr, ok := policyResp.Result["reason"].(string); ok && reasonStr != "" {
+			reason = reasonStr
+		}
+		return false, reason
+	default:
+		p.logError("Policy service returned unknown action", "correlation_id", correlationID, "action", policyResp.Action)
+		return false, "Invalid policy response"
+	}
+}
+
+func (p *Plugin) logError(msg string, keyValuePairs ...interface{}) {
+	if p.API != nil {
+		p.API.LogError(msg, keyValuePairs...)
+	}
+}
+
+func (p *Plugin) logDebug(msg string, keyValuePairs ...interface{}) {
+	if p.API != nil {
+		p.API.LogDebug(msg, keyValuePairs...)
+	}
+}
+
+func newCorrelationID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("policy-%d", time.Now().UnixNano())
+	}
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+func redactedPolicyPayload(raw []byte) string {
+	var payload interface{}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return fmt.Sprintf("<non-json payload: %d bytes>", len(raw))
 	}
 
-	// Extract denial reason
-	reason := "Access denied by policy"
-	if reasonStr, ok := policyResp.Result["reason"].(string); ok && reasonStr != "" {
-		reason = reasonStr
+	redacted := redactValue(payload)
+	out, err := json.Marshal(redacted)
+	if err != nil {
+		return "<redaction failed>"
 	}
+	return string(out)
+}
 
-	return false, reason
+func redactValue(value interface{}) interface{} {
+	switch v := value.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(v))
+		for key, val := range v {
+			if isSensitivePolicyField(key) {
+				out[key] = redactionSummary(val)
+				continue
+			}
+			out[key] = redactValue(val)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(v))
+		for i, item := range v {
+			out[i] = redactValue(item)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+func isSensitivePolicyField(key string) bool {
+	switch strings.ToLower(key) {
+	case "message",
+		"old_message",
+		"new_message",
+		"user_attributes",
+		"channel_header",
+		"email",
+		"file_hash",
+		"mattermost_api_token",
+		"tdi_api_key",
+		"authorization",
+		"reason":
+		return true
+	default:
+		return false
+	}
+}
+
+func redactionSummary(value interface{}) string {
+	switch v := value.(type) {
+	case string:
+		return fmt.Sprintf("<redacted:%d chars>", len(v))
+	case []interface{}:
+		return fmt.Sprintf("<redacted:%d items>", len(v))
+	case map[string]interface{}:
+		return fmt.Sprintf("<redacted:%d fields>", len(v))
+	case nil:
+		return "<redacted:null>"
+	default:
+		return "<redacted>"
+	}
 }
 
 // ============================================================================
@@ -1346,8 +1462,10 @@ type accessControlPoliciesResponse struct {
 
 // policyChannelsResponse holds the response from GET .../access_control_policies/{id}/resources/channels
 type policyChannelsResponse struct {
-	Channels   []struct{ ID string `json:"id"` } `json:"channels"`
-	TotalCount int64                             `json:"total_count"`
+	Channels []struct {
+		ID string `json:"id"`
+	} `json:"channels"`
+	TotalCount int64 `json:"total_count"`
 }
 
 // isChannelAdmin returns true if the user is a channel admin (or system admin) for the channel
@@ -1465,10 +1583,10 @@ func (p *Plugin) handleAPIClassify(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"message": "Channel classified successfully",
+		"success":      true,
+		"message":      "Channel classified successfully",
 		"channel_name": channel.Name,
-		"username": username,
+		"username":     username,
 	})
 }
 

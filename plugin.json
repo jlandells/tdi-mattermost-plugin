@@ -194,6 +194,14 @@
         "default": 5
       },
       {
+        "key": "MaxFileInspectionBytes",
+        "display_name": "Max File Inspection Size (bytes)",
+        "type": "number",
+        "help_text": "Maximum uploaded file size that the plugin will spool, hash, and send to TDI file policy. Files larger than this are denied when file upload policy is enabled. Use 0 for the default 100 MiB.",
+        "placeholder": "104857600",
+        "default": 104857600
+      },
+      {
         "key": "EnableDebugLogging",
         "display_name": "Enable Debug Logging",
         "type": "bool",
@@ -226,4 +234,3 @@
     ]
   }
 }
-

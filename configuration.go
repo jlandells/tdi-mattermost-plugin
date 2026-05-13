@@ -1,9 +1,17 @@
 package main
 
 import (
+	"encoding/json"
+	"net/url"
 	"reflect"
+	"strings"
 
 	"github.com/pkg/errors"
+)
+
+const (
+	defaultMaxFileInspectionBytes = 100 * 1024 * 1024
+	maxFileInspectionBytesLimit   = 1024 * 1024 * 1024
 )
 
 // configuration captures the plugin's external configuration as exposed in the Mattermost server
@@ -18,33 +26,34 @@ import (
 // If you add non-reference types to your configuration struct, be sure to rewrite Clone as a deep
 // copy appropriate for your types.
 type configuration struct {
-	TDIURL                      string
-	TDINamespace                string
-	TDIAPIKey                   string
-	EnableMessagePolicy         bool
-	EnableChannelJoinPolicy     bool
-	EnableMessageEditPolicy     bool
-	EnableMessageDeletePolicy   bool
-	EnableFileUploadPolicy      bool
-	EnableLoginPolicy           bool
-	EnableChannelCreationPolicy bool
-	EnableReactionPolicy        bool
-	EnableUserCreatedPolicy     bool
-	EnableTeamJoinPolicy        bool
-	EnableUserLeftTeamPolicy    bool
-	EnableUserLeftChannelPolicy     bool
-	EnableMessagePostedPolicy       bool   // audit: MessageHasBeenPosted
-	EnableMessageUpdatedPolicy      bool   // audit: MessageHasBeenUpdated
-	EnableUserLoggedInPolicy        bool   // audit: UserHasLoggedIn
-	EnableMessagesConsumedPolicy    bool   // filter: MessagesWillBeConsumed
-	EnableUserDeactivatedPolicy     bool   // audit: UserHasBeenDeactivated
-	EnablePushNotificationPolicy    bool   // block/modify: NotificationWillBePushed
-	EnableConfigValidationPolicy    bool   // validate: ConfigurationWillBeSaved
-	EnableSAMLLoginPolicy           bool   // audit: OnSAMLLogin (server 10.7+)
-	PolicyTimeout                   int
-	EnableDebugLogging          bool
-	ExemptSystemAdmins          bool
-	UserAttributeMapping        string
+	TDIURL                       string
+	TDINamespace                 string
+	TDIAPIKey                    string
+	EnableMessagePolicy          bool
+	EnableChannelJoinPolicy      bool
+	EnableMessageEditPolicy      bool
+	EnableMessageDeletePolicy    bool
+	EnableFileUploadPolicy       bool
+	EnableLoginPolicy            bool
+	EnableChannelCreationPolicy  bool
+	EnableReactionPolicy         bool
+	EnableUserCreatedPolicy      bool
+	EnableTeamJoinPolicy         bool
+	EnableUserLeftTeamPolicy     bool
+	EnableUserLeftChannelPolicy  bool
+	EnableMessagePostedPolicy    bool // audit: MessageHasBeenPosted
+	EnableMessageUpdatedPolicy   bool // audit: MessageHasBeenUpdated
+	EnableUserLoggedInPolicy     bool // audit: UserHasLoggedIn
+	EnableMessagesConsumedPolicy bool // filter: MessagesWillBeConsumed
+	EnableUserDeactivatedPolicy  bool // audit: UserHasBeenDeactivated
+	EnablePushNotificationPolicy bool // block/modify: NotificationWillBePushed
+	EnableConfigValidationPolicy bool // validate: ConfigurationWillBeSaved
+	EnableSAMLLoginPolicy        bool // audit: OnSAMLLogin (server 10.7+)
+	PolicyTimeout                int
+	MaxFileInspectionBytes       int64
+	EnableDebugLogging           bool
+	ExemptSystemAdmins           bool
+	UserAttributeMapping         string
 	// MattermostAPIToken is used for REST calls to Mattermost (e.g. access control policy search/assign).
 	// Required for the classify-channel feature. Use a Personal Access Token or System Admin token.
 	MattermostAPIToken string
@@ -107,6 +116,10 @@ func (p *Plugin) OnConfigurationChange() error {
 		return errors.Wrap(err, "failed to load plugin configuration")
 	}
 
+	if err := p.validateConfiguration(configuration); err != nil {
+		return errors.Wrap(err, "invalid plugin configuration")
+	}
+
 	p.setConfiguration(configuration)
 
 	return nil
@@ -114,11 +127,20 @@ func (p *Plugin) OnConfigurationChange() error {
 
 // validateConfiguration validates the configuration and returns an error if it is invalid.
 func (p *Plugin) validateConfiguration(configuration *configuration) error {
-	if configuration.TDIURL == "" {
+	if configuration == nil {
+		return errors.New("configuration is required")
+	}
+
+	if strings.TrimSpace(configuration.TDIURL) == "" {
 		return errors.New("TDIURL is required")
 	}
 
-	if configuration.TDINamespace == "" {
+	tdiURL, err := url.ParseRequestURI(configuration.TDIURL)
+	if err != nil || tdiURL.Scheme == "" || tdiURL.Host == "" {
+		return errors.New("TDIURL must be an absolute URL")
+	}
+
+	if strings.TrimSpace(configuration.TDINamespace) == "" {
 		return errors.New("TDINamespace is required")
 	}
 
@@ -126,5 +148,31 @@ func (p *Plugin) validateConfiguration(configuration *configuration) error {
 		return errors.New("PolicyTimeout must be greater than 0")
 	}
 
+	if configuration.PolicyTimeout > 60 {
+		return errors.New("PolicyTimeout must be 60 seconds or less")
+	}
+
+	if configuration.MaxFileInspectionBytes < 0 {
+		return errors.New("MaxFileInspectionBytes must be zero or greater")
+	}
+
+	if configuration.MaxFileInspectionBytes > maxFileInspectionBytesLimit {
+		return errors.Errorf("MaxFileInspectionBytes must be %d bytes or less", maxFileInspectionBytesLimit)
+	}
+
+	if configuration.UserAttributeMapping != "" {
+		var attrMapping map[string]string
+		if err := json.Unmarshal([]byte(configuration.UserAttributeMapping), &attrMapping); err != nil {
+			return errors.Wrap(err, "UserAttributeMapping must be valid JSON object mapping strings to strings")
+		}
+	}
+
 	return nil
+}
+
+func (c *configuration) maxFileInspectionBytes() int64 {
+	if c == nil || c.MaxFileInspectionBytes == 0 {
+		return defaultMaxFileInspectionBytes
+	}
+	return c.MaxFileInspectionBytes
 }

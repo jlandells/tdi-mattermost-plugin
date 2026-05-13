@@ -1,15 +1,23 @@
 # Build outputs
-dist
+dist/
+webapp/dist/
 *.tar.gz
 *.exe
+mattermost-policy-plugin
 
 # Go
 *.test
 *.out
 vendor/
 
+# Node / webapp
+webapp/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
 # Bundle staging (created by Makefile)
-tdi-mattermost-plugins/dist/bundle/
+dist/bundle/
 
 # OS
 .DS_Store

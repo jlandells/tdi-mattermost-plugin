@@ -49,6 +49,11 @@ bundle: build webapp
 test:
 	go test -v ./...
 
+## Run production readiness verification
+.PHONY: verify
+verify:
+	./scripts/verify.sh
+
 ## Clean build artifacts
 .PHONY: clean
 clean:
@@ -66,6 +71,6 @@ help:
 	@echo "  build        - Build plugin for all platforms"
 	@echo "  bundle       - Create distributable plugin bundle"
 	@echo "  test         - Run tests"
+	@echo "  verify       - Run Go tests and webapp build"
 	@echo "  clean        - Remove build artifacts"
 	@echo "  deps         - Install dependencies"
-
