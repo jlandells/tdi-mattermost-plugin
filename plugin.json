@@ -25,7 +25,7 @@
         "key": "TDIURL",
         "display_name": "TDI Base URL",
         "type": "text",
-        "help_text": "Base URL for your TDI instance (e.g., https://tdi.example.com)",
+        "help_text": "Base URL for the policy service (e.g., https://tdi.example.com)",
         "placeholder": "https://tdi.example.com",
         "default": ""
       },
@@ -33,7 +33,7 @@
         "key": "TDINamespace",
         "display_name": "TDI Namespace",
         "type": "text",
-        "help_text": "Namespace in TDI containing the policy workflows",
+        "help_text": "Policy namespace used when building endpoint paths",
         "placeholder": "mattermost-policies",
         "default": "mattermost-policies"
       },

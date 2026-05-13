@@ -10,6 +10,7 @@ import (
 )
 
 const (
+	defaultPolicyTimeout          = 5
 	defaultMaxFileInspectionBytes = 100 * 1024 * 1024
 	maxFileInspectionBytesLimit   = 1024 * 1024 * 1024
 )
@@ -175,4 +176,11 @@ func (c *configuration) maxFileInspectionBytes() int64 {
 		return defaultMaxFileInspectionBytes
 	}
 	return c.MaxFileInspectionBytes
+}
+
+func (c *configuration) policyTimeout() int {
+	if c == nil || c.PolicyTimeout <= 0 {
+		return defaultPolicyTimeout
+	}
+	return c.PolicyTimeout
 }

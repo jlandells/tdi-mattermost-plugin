@@ -30,14 +30,22 @@ This executes:
 
 ## Packaging
 
-Create a distributable Mattermost plugin bundle with:
+Create the public distributable Mattermost plugin bundle with:
 
 ```bash
 make bundle
 ```
 
+The public bundle is server-only. The Makefile removes the `webapp` manifest
+entry from the packaged `plugin.json` and does not include `webapp/dist/main.js`.
 The bundle is written to `dist/` and should be published as a release artifact,
 not committed to Git.
+
+For internal deployments that need the optional Mattermost webapp:
+
+```bash
+make bundle INCLUDE_WEBAPP=true
+```
 
 CI writes `dist/SHA256SUMS` beside bundle artifacts so releases can be verified
 after download.
@@ -48,8 +56,9 @@ This repository is configured for GitHub Actions:
 
 - `.github/workflows/ci.yml` runs verification on pull requests and pushes to
   `main`, `master`, and `develop`.
-- `.github/workflows/ci.yml` also builds the Mattermost plugin bundle and
-  uploads the `.tar.gz` plus `SHA256SUMS` as workflow artifacts.
+- `.github/workflows/ci.yml` also builds the public server-only Mattermost
+  plugin bundle and uploads the `.tar.gz` plus `SHA256SUMS` as workflow
+  artifacts.
 - `.github/workflows/release.yml` publishes public GitHub Releases when a tag
   matching `v*` is pushed.
 
@@ -58,7 +67,8 @@ third-party release action or extra secret is required.
 
 ## Publishing A Release
 
-1. Ensure `PLUGIN_VERSION` in `Makefile` and `version` in `plugin.json` match.
+1. Ensure `version` in `plugin.json` matches the release tag without the `v`
+   prefix. For example, tag `v1.0.6` requires `"version": "1.0.6"`.
 2. Run `make verify`.
 3. Commit the release changes.
 4. Create and push a version tag:
@@ -74,6 +84,10 @@ GitHub Actions will build:
 - `dist/SHA256SUMS`
 
 Both files are attached to the GitHub Release for the tag.
+
+The release workflow derives `PLUGIN_VERSION` from the tag and validates it
+against `plugin.json` with `scripts/check-release-version.sh`. If the tag and
+manifest do not match, the release fails before publishing artifacts.
 
 ## Migrating The Remote To GitHub
 
@@ -91,17 +105,15 @@ Use the HTTPS remote form instead if that is your standard:
 git remote set-url origin https://github.com/<owner>/<repo>.git
 ```
 
-## Existing Cleanup Required
+## Repository Cleanliness
 
-At the time this policy was added, historical generated files were still tracked
-by Git, including `webapp/node_modules/` and a root-level
-`mattermost-policy-plugin` binary. Remove them from source control with:
+Before publishing a public release, confirm generated files are ignored and not
+tracked:
 
 ```bash
-git rm -r --cached webapp/node_modules
-git rm --cached mattermost-policy-plugin
+git ls-files webapp/node_modules dist webapp/dist mattermost-policy-plugin
+git status --ignored --short
 ```
 
-Those commands untrack the files without deleting local dependency folders when
-the files still exist in the worktree. Commit the removals together with the
-`.gitignore` update.
+The first command should print no tracked files for those paths. The second
+command may show ignored local build outputs with `!!`, which is expected.

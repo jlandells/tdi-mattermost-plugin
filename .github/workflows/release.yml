@@ -40,9 +40,17 @@ jobs:
       - name: Verify
         run: make verify
 
+      - name: Resolve release version
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          VERSION="$(./scripts/check-release-version.sh "${RELEASE_TAG}")"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
       - name: Build bundle
         run: |
-          make bundle
+          make bundle PLUGIN_VERSION="${{ steps.version.outputs.version }}"
           sha256sum dist/*.tar.gz > dist/SHA256SUMS
 
       - name: Publish release
@@ -55,4 +63,3 @@ jobs:
             dist/SHA256SUMS \
             --title "${RELEASE_TAG}" \
             --generate-notes
-

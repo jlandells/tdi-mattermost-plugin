@@ -1,39 +1,54 @@
 # Production Readiness Plan
 
+## Current Status
+
+Core hardening work is in place: configuration validation, centralized TDI
+response handling, correlation IDs, redacted debug logging, bounded file upload
+inspection, bot user creation, focused Go tests, GitHub CI, and tag-driven
+release artifacts.
+
+Remaining production work is mainly environment validation: integration tests
+against Mattermost and the configured policy service, deployment-specific
+runbooks, metrics, token rotation ownership, and final public repository
+metadata such as license and support policy.
+
 ## Phase 1: Reference Baseline
 
-- Verify all Mattermost REST API endpoints used by this plugin.
-- Verify all Mattermost plugin SDK hooks and return semantics.
-- Verify TDI gateway request/response contracts.
-- Convert unresolved questions in `docs/references/` into implementation tasks.
+- Mattermost REST API endpoint notes captured in `docs/references/`.
+- Mattermost plugin SDK hook notes captured in `docs/references/`.
+- Policy endpoint contract documented in `docs/architecture/overview.md`.
+- Remaining task: validate all enabled hooks in a deployed Mattermost test
+  instance.
 
 ## Phase 2: Correctness And Safety
 
-- Create and persist a real plugin bot user.
-- Validate plugin configuration during `OnConfigurationChange`.
-- Centralize TDI client behavior and response parsing.
-- Add correlation IDs, structured logs, and secret redaction.
-- Classify every hook as blocking, remediation, or audit-only in code and docs.
+- Plugin bot user creation is implemented.
+- Configuration validation during `OnConfigurationChange` is implemented.
+- TDI client behavior and response parsing are centralized.
+- Correlation IDs and debug payload redaction are implemented.
+- Hook behavior is documented as blocking, remediation, or audit-only.
 
 ## Phase 3: Scalability And Failure Handling
 
-- Replace full in-memory file upload processing with bounded streaming behavior.
+- Bounded file upload spool/hash behavior is implemented.
 - Define timeout budgets per hook.
 - Define retry policy only for safe/idempotent calls.
 - Add operational metrics for policy latency, denies, timeouts, and TDI errors.
 
 ## Phase 4: Test Coverage
 
-- Add Go tests for config validation, TDI client parsing, and policy decisions.
+- Go tests cover config validation, TDI client parsing, bot behavior, and file
+  upload handling.
 - Add HTTP handler tests for plugin-local APIs.
-- Add webapp tests for channel classification states.
-- Add workflow/helper tests for CEL and STANAG mapping.
-- Add an integration test plan for Mattermost plus TDI.
+- Add webapp tests for internal channel classification states if the optional
+  webapp remains supported.
+- Add an integration test plan for Mattermost plus a policy-service test double.
 
 ## Phase 5: Release And Operations
 
-- Add CI for Go, webapp, and bundle creation.
-- Remove generated binaries from source control.
-- Produce versioned plugin bundles with checksums.
-- Add deployment, rollback, token rotation, and TDI outage runbooks.
-
+- GitHub CI verifies Go tests and webapp build.
+- GitHub release workflow produces versioned public server-only plugin bundles
+  and checksums from tags.
+- Generated outputs are ignored and not tracked.
+- Deployment, rollback, token rotation, and failure-mode runbooks are started in
+  `docs/operations/`.

@@ -1,8 +1,9 @@
 # Makefile for Mattermost Policy Plugin
 
 PLUGIN_ID ?= com.archtis.mattermost-policy-plugin
-PLUGIN_VERSION ?= 1.0.5
+PLUGIN_VERSION ?= $(shell node -p "require('./plugin.json').version")
 BUNDLE_NAME ?= $(PLUGIN_ID)-$(PLUGIN_VERSION).tar.gz
+INCLUDE_WEBAPP ?= false
 
 ## Build the plugin for all supported platforms
 .PHONY: build
@@ -34,13 +35,22 @@ webapp:
 ## Bundle the plugin for distribution
 ## Mattermost expects plugin.json at the ROOT of the extracted archive (no top-level folder)
 .PHONY: bundle
+ifeq ($(INCLUDE_WEBAPP),true)
 bundle: build webapp
+else
+bundle: build
+endif
 	@echo "Creating plugin bundle..."
 	rm -rf dist/bundle
-	mkdir -p dist/bundle/server/dist dist/bundle/webapp/dist
-	cp plugin.json dist/bundle/
+	mkdir -p dist/bundle/server/dist
 	cp dist/plugin-* dist/bundle/server/dist/
+ifeq ($(INCLUDE_WEBAPP),true)
+	mkdir -p dist/bundle/webapp/dist
+	cp plugin.json dist/bundle/
 	cp webapp/dist/main.js dist/bundle/webapp/dist/
+else
+	node -e "const fs=require('fs'); const manifest=require('./plugin.json'); delete manifest.webapp; fs.writeFileSync('dist/bundle/plugin.json', JSON.stringify(manifest, null, 2) + '\n');"
+endif
 	cd dist/bundle && tar -czf ../$(BUNDLE_NAME) .
 	@echo "Plugin bundle created: dist/$(BUNDLE_NAME)"
 
@@ -69,7 +79,8 @@ deps:
 help:
 	@echo "Available targets:"
 	@echo "  build        - Build plugin for all platforms"
-	@echo "  bundle       - Create distributable plugin bundle"
+	@echo "  bundle       - Create server-only distributable plugin bundle"
+	@echo "  bundle INCLUDE_WEBAPP=true - Create bundle with internal webapp"
 	@echo "  test         - Run tests"
 	@echo "  verify       - Run Go tests and webapp build"
 	@echo "  clean        - Remove build artifacts"

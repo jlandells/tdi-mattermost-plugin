@@ -1,18 +1,20 @@
-# Production Readiness Documentation
+# Documentation
 
-This directory is the working knowledge base for hardening the TDI Mattermost
-Policy Plugin.
+This directory contains the public documentation for the TDI Mattermost Policy
+Plugin.
 
 ## Structure
 
-- `references/` contains source-of-truth notes and links for external APIs and
-  SDKs.
-- `architecture/` contains decisions and matrices derived from those references.
-- `operations/` contains deployment, support, and incident runbooks.
+- `architecture/` contains the plugin flow, hook behavior, and production
+  readiness plan.
+- `operations/` contains installation, release, deployment, and support
+  procedures.
+- `references/` contains source-of-truth notes for Mattermost APIs and the
+  policy endpoint contract consumed by the plugin.
 
-Keep external references concise. Do not copy full vendor documentation into
-this repository; link to the upstream source and capture only the facts that
-affect this plugin.
+Keep external references concise. Do not copy full vendor documentation into this
+repository; link to the upstream source and capture only the facts that affect
+this plugin.
 
 ## Current Source Links
 
@@ -21,5 +23,3 @@ affect this plugin.
 - Mattermost plugin overview: https://developers.mattermost.com/integrate/plugins/
 - Mattermost server plugin SDK reference: https://developers.mattermost.com/integrate/reference/server/server-reference/
 - Mattermost webapp plugin SDK reference: https://developers.mattermost.com/integrate/reference/webapp/webapp-reference/
-- TDI / Direktiv documentation: https://docs.direktiv.io/
-

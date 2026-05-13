@@ -1,13 +1,14 @@
-# TDI / Direktiv Reference Notes
-
-Source:
-https://docs.direktiv.io/
+# Policy Endpoint Contract
 
 ## Purpose In This Plugin
 
-TDI is the external policy decision point. Mattermost remains the policy
-enforcement point. Plugin hooks call TDI gateway endpoints and interpret the
-workflow response as either allow or deny.
+This repository is focused on the Mattermost plugin. It does not document how to
+install, deploy, or configure the external policy service.
+
+The plugin treats the configured policy service as the external policy decision
+point. Mattermost remains the policy enforcement point. Plugin hooks call
+TDI-compatible endpoint paths and interpret the response as either allow or
+deny.
 
 ## Current Contract
 
@@ -17,7 +18,7 @@ Plugin request URL pattern:
 {TDIURL}/ns/{TDINamespace}/policy/v1/{policy-path}
 ```
 
-Expected successful workflow response:
+Expected allow response:
 
 ```json
 {
@@ -39,17 +40,6 @@ Expected deny response:
 }
 ```
 
-## Production Questions To Resolve
-
-- Confirm the stable gateway API shape for the deployed TDI version.
-- Confirm authentication mechanism: bearer API key, gateway auth plugin, mTLS,
-  or another deployment-specific control.
-- Define timeout budgets per hook.
-- Define whether each endpoint is idempotent and whether retries are allowed.
-- Define workflow deployment/versioning strategy.
-- Define expected audit behavior when Mattermost has already committed the
-  action.
-
 ## Implementation Rules
 
 - Fail secure for pre-action blocking hooks unless an explicit policy says
@@ -57,7 +47,7 @@ Expected deny response:
 - Fail observable for audit-only hooks: log/report failure without disrupting
   already-completed Mattermost actions.
 - Include a correlation ID in every policy request and log entry. The plugin
-  sends this to TDI in the `X-Correlation-ID` header.
+  sends this to the policy service in the `X-Correlation-ID` header.
 - Do not log raw policy payloads. Debug logs must redact message content,
   channel headers, user attributes, email addresses, file hashes, API keys,
   authorization values, and denial reasons.

@@ -80,7 +80,7 @@ func (p *Plugin) OnActivate() error {
 
 	// Initialize HTTP client with timeout
 	p.httpClient = &http.Client{
-		Timeout: time.Duration(config.PolicyTimeout) * time.Second,
+		Timeout: time.Duration(config.policyTimeout()) * time.Second,
 	}
 
 	// Initialize HTTP router for classify-channel and webapp API
@@ -845,49 +845,10 @@ func (p *Plugin) ChannelHasBeenCreated(c *plugin.Context, channel *model.Channel
 			"reason", reason,
 		)
 
-		// Auto-classify or modify channel based on policy
-		// For example, add clearance requirement to header
-		// if strings.Contains(strings.ToLower(channel.Name), "secret") {
-		// 	channel.Header = "CLEARANCE_REQUIRED=SECRET"
-		// 	p.API.UpdateChannel(channel)
-		// }
-
-		// Notify creator
 		p.sendChannelCreationNotice(user.Id, channel.Name, reason)
 		return
 	}
-
-	// Auto-classification logic
-	// classification := p.classifyChannelByName(channel.Name)
-	// if classification != "" {
-	// 	channel.Header = fmt.Sprintf("CLEARANCE_REQUIRED=%s", classification)
-	// 	p.API.UpdateChannel(channel)
-
-	// 	if config.EnableDebugLogging {
-	// 		p.API.LogDebug("Auto-classified channel",
-	// 			"channel", channel.Name,
-	// 			"classification", classification,
-	// 		)
-	// 	}
-	// }
 }
-
-// // classifyChannelByName determines classification based on channel name
-// func (p *Plugin) classifyChannelByName(name string) string {
-// 	nameLower := strings.ToLower(name)
-
-// 	if strings.Contains(nameLower, "ts-") || strings.Contains(nameLower, "topsecret") {
-// 		return "TOP SECRET"
-// 	}
-// 	if strings.Contains(nameLower, "secret") || strings.Contains(nameLower, "classified") {
-// 		return "SECRET"
-// 	}
-// 	if strings.Contains(nameLower, "confidential") {
-// 		return "CONFIDENTIAL"
-// 	}
-
-// 	return ""
-// }
 
 // sendChannelCreationNotice sends a DM about channel creation policy
 func (p *Plugin) sendChannelCreationNotice(userID, channelName, notice string) {
@@ -1279,7 +1240,7 @@ func (p *Plugin) checkTDIPolicy(req interface{}, policyPath string) (bool, strin
 	}
 
 	// Create HTTP request
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.PolicyTimeout)*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.policyTimeout())*time.Second)
 	defer cancel()
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBuffer(jsonData))
@@ -1296,7 +1257,7 @@ func (p *Plugin) checkTDIPolicy(req interface{}, policyPath string) (bool, strin
 
 	// Send request
 	if p.httpClient == nil {
-		p.httpClient = &http.Client{Timeout: time.Duration(config.PolicyTimeout) * time.Second}
+		p.httpClient = &http.Client{Timeout: time.Duration(config.policyTimeout()) * time.Second}
 	}
 	resp, err := p.httpClient.Do(httpReq)
 	if err != nil {
@@ -1481,7 +1442,12 @@ func (p *Plugin) isChannelAdmin(channelID, userID string) bool {
 	if err != nil || member == nil {
 		return false
 	}
-	return strings.Contains(member.Roles, "channel_admin")
+	for _, role := range strings.Fields(member.Roles) {
+		if role == "channel_admin" {
+			return true
+		}
+	}
+	return false
 }
 
 // handleAPIPolicies returns JSON list of access control policies (for webapp)
