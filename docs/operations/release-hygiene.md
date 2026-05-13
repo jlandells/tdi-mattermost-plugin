@@ -117,3 +117,15 @@ git status --ignored --short
 
 The first command should print no tracked files for those paths. The second
 command may show ignored local build outputs with `!!`, which is expected.
+
+## Public Repository Checklist
+
+Before making the repository public:
+
+- Confirm the Apache-2.0 `LICENSE` file is present.
+- Confirm GitHub private vulnerability reporting is enabled or update
+  `SECURITY.md` with the approved reporting channel.
+- Confirm `make verify` passes.
+- Confirm `make bundle` creates a server-only public bundle.
+- Confirm `make bundle INCLUDE_WEBAPP=true` still works for internal releases
+  if the optional webapp is needed.

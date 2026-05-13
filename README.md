@@ -92,7 +92,12 @@ See `docs/operations/release-hygiene.md` for the release process.
 - `docs/references/` contains concise notes and source links for Mattermost
   plugin and REST APIs.
 
-## Public Repository Notes
+## Contributing And Security
 
-Before publishing, choose and add a `LICENSE` file and confirm the public
-support/security contact policy for this project.
+- See `CONTRIBUTING.md` for the development workflow and repository hygiene
+  rules.
+- See `SECURITY.md` for vulnerability reporting guidance.
+
+## License
+
+This project is licensed under the Apache License 2.0. See `LICENSE`.
