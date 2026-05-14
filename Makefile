@@ -10,26 +10,12 @@ BUNDLE_SUFFIX ?=
 endif
 BUNDLE_NAME ?= $(PLUGIN_ID)-$(PLUGIN_VERSION)$(BUNDLE_SUFFIX).tar.gz
 
-## Build the plugin for all supported platforms
+## Build the plugin server binaries (Linux only — Mattermost runs on Linux)
 .PHONY: build
-build: build-linux build-darwin build-windows
-
-.PHONY: build-linux
-build-linux:
+build:
 	@echo "Building for Linux..."
-	GOOS=linux GOARCH=amd64 go build -o dist/plugin-linux-amd64 .
-	GOOS=linux GOARCH=arm64 go build -o dist/plugin-linux-arm64 .
-
-.PHONY: build-darwin
-build-darwin:
-	@echo "Building for macOS..."
-	GOOS=darwin GOARCH=amd64 go build -o dist/plugin-darwin-amd64 .
-	GOOS=darwin GOARCH=arm64 go build -o dist/plugin-darwin-arm64 .
-
-.PHONY: build-windows
-build-windows:
-	@echo "Building for Windows..."
-	GOOS=windows GOARCH=amd64 go build -o dist/plugin-windows-amd64.exe .
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o dist/plugin-linux-amd64 .
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o dist/plugin-linux-arm64 .
 
 ## Build the webapp
 .PHONY: webapp
@@ -59,10 +45,15 @@ endif
 	cd dist/bundle && tar -czf ../$(BUNDLE_NAME) .
 	@echo "Plugin bundle created: dist/$(BUNDLE_NAME)"
 
-## Run tests
+## Run tests with the race detector
 .PHONY: test
 test:
-	go test -v ./...
+	go test -race ./...
+
+## Run go vet
+.PHONY: vet
+vet:
+	go vet ./...
 
 ## Run production readiness verification
 .PHONY: verify
@@ -83,10 +74,11 @@ deps:
 .PHONY: help
 help:
 	@echo "Available targets:"
-	@echo "  build        - Build plugin for all platforms"
+	@echo "  build        - Build plugin server binaries for Linux (amd64 + arm64)"
 	@echo "  bundle       - Create server-only distributable plugin bundle"
 	@echo "  bundle INCLUDE_WEBAPP=true - Create internal webapp bundle with -webapp suffix"
-	@echo "  test         - Run tests"
+	@echo "  test         - Run Go tests with the race detector"
+	@echo "  vet          - Run go vet"
 	@echo "  verify       - Run Go tests and webapp build"
 	@echo "  clean        - Remove build artifacts"
 	@echo "  deps         - Install dependencies"

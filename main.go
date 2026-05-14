@@ -1172,11 +1172,16 @@ func (p *Plugin) NotificationWillBePushed(pushNotification *model.PushNotificati
 }
 
 // ConfigurationWillBeSaved is invoked before saving the server configuration.
+// Return a non-nil *model.Config only when intentionally replacing the config;
+// returning the parameter unchanged would cause the server to overwrite its
+// config with a copy that has been round-tripped through this plugin's struct
+// definitions, silently dropping any fields the plugin's mattermost/server/public
+// version doesn't yet know about (e.g. newer AutoTranslationSettings.Agents).
 // Return error to reject the save. Requires server 8.0+.
 func (p *Plugin) ConfigurationWillBeSaved(newCfg *model.Config) (*model.Config, error) {
 	config := p.getConfiguration()
 	if !config.EnableConfigValidationPolicy {
-		return newCfg, nil
+		return nil, nil
 	}
 	policyReq := map[string]interface{}{
 		"action": "config_will_be_saved",
@@ -1185,7 +1190,7 @@ func (p *Plugin) ConfigurationWillBeSaved(newCfg *model.Config) (*model.Config, 
 	if !allowed {
 		return nil, fmt.Errorf("config validation rejected by policy: %s", reason)
 	}
-	return newCfg, nil
+	return nil, nil
 }
 
 // OnSAMLLogin is invoked after a successful SAML login (audit). Requires server 10.7+.

@@ -6,7 +6,7 @@ cd "${ROOT_DIR}"
 
 export GOCACHE="${GOCACHE:-/tmp/tdi-mattermost-go-build-cache}"
 
-go test ./...
+go test -race ./...
 
 (
   cd webapp
