@@ -2,6 +2,7 @@ import React from 'react';
 import {Provider} from 'react-redux';
 import manifest from '../../plugin.json';
 import ClassifyChannelRHS from './components/ClassifyChannelRHS';
+import ScopedTeamsInput from './components/ScopedTeamsInput';
 
 const pluginId = manifest.id;
 
@@ -27,6 +28,10 @@ class Plugin {
       () => store.dispatch(this.rhsPlugin.toggleRHSPlugin),
       'Classify Channel'
     );
+
+    if (registry.registerAdminConsoleCustomSetting) {
+      registry.registerAdminConsoleCustomSetting('ScopedTeamNames', ScopedTeamsInput);
+    }
   }
 }
 

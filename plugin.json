@@ -2,7 +2,7 @@
   "id": "com.archtis.mattermost-policy-plugin",
   "name": "TDI Mattermost Policy Plugin",
   "description": "Enforces external policy decisions via TDI for message and channel access control",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "min_server_version": "9.0.0",
   "webapp": {
     "bundle_path": "webapp/dist/main.js"
@@ -229,6 +229,13 @@
         "help_text": "Map policy attribute names to Mattermost/LDAP fields. Supports: built-in (first_name, last_name, nickname, position), user.Props keys, or LDAP attribute names for LDAP users. Custom profile attributes (SecurityClearance, Nationality, etc.) from Enterprise System properties are always included by field name.",
         "placeholder": "{\"clearance\": \"employeeClearance\", \"department\": \"department\"}",
         "default": "{}"
+      },
+      {
+        "key": "ScopedTeamNames",
+        "display_name": "Restrict Plugin to Specific Teams",
+        "type": "custom",
+        "help_text": "Limit policy enforcement to selected teams. Leave empty to apply to all teams.",
+        "default": []
       }
     ]
   }

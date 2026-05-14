@@ -1,14 +1,8 @@
-# Makefile for Mattermost Policy Plugin
+# Makefile for the TDI Mattermost Policy Plugin
 
 PLUGIN_ID ?= com.archtis.mattermost-policy-plugin
 PLUGIN_VERSION ?= $(shell node -p "require('./plugin.json').version")
-INCLUDE_WEBAPP ?= false
-ifeq ($(INCLUDE_WEBAPP),true)
-BUNDLE_SUFFIX ?= -webapp
-else
-BUNDLE_SUFFIX ?=
-endif
-BUNDLE_NAME ?= $(PLUGIN_ID)-$(PLUGIN_VERSION)$(BUNDLE_SUFFIX).tar.gz
+BUNDLE_NAME ?= $(PLUGIN_ID)-$(PLUGIN_VERSION).tar.gz
 
 ## Build the plugin server binaries (Linux only — Mattermost runs on Linux)
 .PHONY: build
@@ -26,22 +20,13 @@ webapp:
 ## Bundle the plugin for distribution
 ## Mattermost expects plugin.json at the ROOT of the extracted archive (no top-level folder)
 .PHONY: bundle
-ifeq ($(INCLUDE_WEBAPP),true)
 bundle: build webapp
-else
-bundle: build
-endif
 	@echo "Creating plugin bundle..."
 	rm -rf dist/bundle
-	mkdir -p dist/bundle/server/dist
-	cp dist/plugin-* dist/bundle/server/dist/
-ifeq ($(INCLUDE_WEBAPP),true)
-	mkdir -p dist/bundle/webapp/dist
-	cp plugin.json dist/bundle/
+	mkdir -p dist/bundle/server/dist dist/bundle/webapp/dist
+	cp dist/plugin-linux-* dist/bundle/server/dist/
 	cp webapp/dist/main.js dist/bundle/webapp/dist/
-else
-	node -e "const fs=require('fs'); const manifest=require('./plugin.json'); delete manifest.webapp; fs.writeFileSync('dist/bundle/plugin.json', JSON.stringify(manifest, null, 2) + '\n');"
-endif
+	cp plugin.json dist/bundle/
 	cd dist/bundle && tar -czf ../$(BUNDLE_NAME) .
 	@echo "Plugin bundle created: dist/$(BUNDLE_NAME)"
 
@@ -75,8 +60,8 @@ deps:
 help:
 	@echo "Available targets:"
 	@echo "  build        - Build plugin server binaries for Linux (amd64 + arm64)"
-	@echo "  bundle       - Create server-only distributable plugin bundle"
-	@echo "  bundle INCLUDE_WEBAPP=true - Create internal webapp bundle with -webapp suffix"
+	@echo "  webapp       - Build the webapp bundle"
+	@echo "  bundle       - Create the distributable plugin bundle (server + webapp)"
 	@echo "  test         - Run Go tests with the race detector"
 	@echo "  vet          - Run go vet"
 	@echo "  verify       - Run Go tests and webapp build"

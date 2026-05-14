@@ -48,9 +48,10 @@ See `hook-behavior-matrix.md` for the detailed mapping.
 ├── .github/workflows/          GitHub CI and release workflows
 ├── docs/                       Public documentation and reference notes
 ├── scripts/                    Verification and release helper scripts
-├── webapp/                     Optional internal Mattermost webapp bundle
+├── webapp/                     Mattermost webapp bundle (RHS + custom admin settings)
 ├── main.go                     Server plugin hooks and TDI client logic
 ├── configuration.go            Plugin configuration and validation
+├── scope.go                    Team-scoping helpers used by every hook
 ├── plugin.json                 Mattermost plugin manifest and settings schema
 └── Makefile                    Build, verify, bundle, and cleanup targets
 ```
@@ -64,3 +65,8 @@ See `hook-behavior-matrix.md` for the detailed mapping.
   `MaxFileInspectionBytes` before sending file metadata to TDI.
 - Channel classification requires a Mattermost API token with permissions to
   search and assign access control policies.
+- Team scoping: when `ScopedTeamNames` is non-empty, every hook gates on team
+  membership before calling TDI. Channel-bound hooks resolve the channel to a
+  team ID (cached); user-global hooks (login, SAML, user-created, deactivated)
+  check whether the user belongs to any team in scope. `ConfigurationWillBeSaved`
+  is server-global and ignores team scope.

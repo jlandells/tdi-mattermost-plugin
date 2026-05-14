@@ -53,3 +53,18 @@ Mattermost action.
 | Hook | Reason |
 | --- | --- |
 | `FileWillBeDownloaded` | Requires a Mattermost server/plugin SDK version that exposes this hook. |
+
+## Team Scoping
+
+Every hook above (except `ConfigurationWillBeSaved`) checks the configured
+`ScopedTeamNames` list before calling TDI. When the list is empty the hook
+runs for events from any team — the default behaviour. When the list is
+non-empty:
+
+- Channel-bound hooks resolve the channel's team and run only when that team
+  is in scope. DMs and Group DMs have no team, so they fall back to the
+  acting user's team membership.
+- User-global hooks (`UserWillLogIn`, `UserHasLoggedIn`, `UserHasBeenCreated`,
+  `UserHasBeenDeactivated`, `OnSAMLLogin`) run only when the user is a member
+  of at least one team in scope.
+- `ConfigurationWillBeSaved` is server-global and ignores `ScopedTeamNames`.

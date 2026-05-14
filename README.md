@@ -14,8 +14,8 @@ your environment.
   config policy checks.
 - Channel join, team join, reaction, user lifecycle, message audit, and SAML
   login events.
-- Optional channel classification helper UI in the Mattermost right-hand
-  sidebar for internal deployments.
+- Channel classification UI in the Mattermost right-hand sidebar.
+- Restrict policy enforcement to a chosen list of teams; default is all teams.
 - Fail-secure policy calls: unavailable, invalid, or rejected TDI responses
   deny blocking actions.
 - Correlation IDs and redacted debug payloads for troubleshooting.
@@ -25,8 +25,7 @@ your environment.
 - Mattermost Server `9.0.0` or later. Some optional hooks require newer server
   versions; see the hook matrix in `docs/architecture/`.
 - Go version from `go.mod`.
-- Node.js 22 for verification, release version checks, and optional webapp
-  bundles.
+- Node.js 22 to build the webapp bundle and read `plugin.json` during release.
 - Reachable external policy endpoints matching the plugin's configured TDI URL,
   namespace, and enabled policy paths when policy checks are enabled.
 
@@ -55,34 +54,14 @@ make verify
 make bundle
 ```
 
-Bundles are written to `dist/`. By default, `make bundle` creates the public
-server-only plugin bundle and removes the `webapp` manifest entry from the
-packaged `plugin.json`.
+The bundle is written to `dist/com.archtis.mattermost-policy-plugin-<version>.tar.gz`
+and contains the Linux server binaries (amd64 + arm64), the webapp bundle,
+and `plugin.json`.
 
-Default public bundle:
-
-```text
-dist/com.archtis.mattermost-policy-plugin-<version>.tar.gz
-```
-
-Release builds use the version from `plugin.json` unless `PLUGIN_VERSION` is
-provided:
+The version is read from `plugin.json`; override it with `PLUGIN_VERSION`:
 
 ```bash
 make bundle PLUGIN_VERSION=1.0.5
-```
-
-For internal deployments that need the Mattermost right-hand sidebar channel
-classification UI:
-
-```bash
-make bundle INCLUDE_WEBAPP=true
-```
-
-Internal webapp bundle:
-
-```text
-dist/com.archtis.mattermost-policy-plugin-<version>-webapp.tar.gz
 ```
 
 ## Release

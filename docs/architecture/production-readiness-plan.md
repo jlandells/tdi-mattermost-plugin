@@ -40,15 +40,14 @@ metadata such as license and support policy.
 - Go tests cover config validation, TDI client parsing, bot behavior, and file
   upload handling.
 - Add HTTP handler tests for plugin-local APIs.
-- Add webapp tests for internal channel classification states if the optional
-  webapp remains supported.
+- Add webapp tests for channel classification states.
 - Add an integration test plan for Mattermost plus a policy-service test double.
 
 ## Phase 5: Release And Operations
 
 - GitHub CI verifies Go tests and webapp build.
-- GitHub release workflow produces versioned public server-only plugin bundles
-  and checksums from tags.
+- GitHub release workflow produces versioned plugin bundles and checksums
+  from tags.
 - Generated outputs are ignored and not tracked.
 - Deployment, rollback, token rotation, and failure-mode runbooks are started in
   `docs/operations/`.

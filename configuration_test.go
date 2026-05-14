@@ -3,6 +3,10 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/mattermost/mattermost/server/public/model"
+	"github.com/mattermost/mattermost/server/public/plugin/plugintest"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestValidateConfiguration(t *testing.T) {
@@ -126,5 +130,92 @@ func TestValidateConfiguration(t *testing.T) {
 				t.Fatalf("expected error containing %q, got %q", tt.wantErr, err.Error())
 			}
 		})
+	}
+}
+
+func TestResolveScopedTeams(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty list leaves nil ID set", func(t *testing.T) {
+		t.Parallel()
+		api := &plugintest.API{}
+		defer api.AssertExpectations(t)
+
+		p := &Plugin{}
+		p.API = api
+		cfg := &configuration{}
+		p.resolveScopedTeams(cfg)
+
+		if cfg.scopedTeamIDs != nil {
+			t.Fatalf("expected nil scopedTeamIDs, got %v", cfg.scopedTeamIDs)
+		}
+	})
+
+	t.Run("normalises whitespace, case, and duplicates", func(t *testing.T) {
+		t.Parallel()
+		api := &plugintest.API{}
+		defer api.AssertExpectations(t)
+
+		api.On("GetTeamByName", "engineering").Return(&model.Team{Id: "team-eng"}, nil).Once()
+		api.On("GetTeamByName", "sales-emea").Return(&model.Team{Id: "team-sales"}, nil).Once()
+
+		p := &Plugin{}
+		p.API = api
+		cfg := &configuration{
+			ScopedTeamNames: []string{"Engineering", "  engineering ", "sales-emea", ""},
+		}
+		p.resolveScopedTeams(cfg)
+
+		if got := cfg.ScopedTeamNames; len(got) != 2 || got[0] != "engineering" || got[1] != "sales-emea" {
+			t.Fatalf("expected normalised [engineering sales-emea], got %v", got)
+		}
+		if _, ok := cfg.scopedTeamIDs["team-eng"]; !ok {
+			t.Fatal("expected team-eng in resolved IDs")
+		}
+		if _, ok := cfg.scopedTeamIDs["team-sales"]; !ok {
+			t.Fatal("expected team-sales in resolved IDs")
+		}
+	})
+
+	t.Run("unknown name logs a warning and is skipped", func(t *testing.T) {
+		t.Parallel()
+		api := &plugintest.API{}
+		defer api.AssertExpectations(t)
+
+		api.On("GetTeamByName", "engineering").Return(&model.Team{Id: "team-eng"}, nil).Once()
+		api.On("GetTeamByName", "made-up").Return((*model.Team)(nil), &model.AppError{Message: "not found"}).Once()
+		api.On("LogWarn", mock.Anything, mock.Anything, mock.Anything).Return().Once()
+
+		p := &Plugin{}
+		p.API = api
+		cfg := &configuration{ScopedTeamNames: []string{"engineering", "made-up"}}
+		p.resolveScopedTeams(cfg)
+
+		if _, ok := cfg.scopedTeamIDs["team-eng"]; !ok {
+			t.Fatal("expected team-eng to resolve despite the unknown sibling")
+		}
+		if len(cfg.scopedTeamIDs) != 1 {
+			t.Fatalf("expected exactly one resolved team, got %d", len(cfg.scopedTeamIDs))
+		}
+	})
+}
+
+func TestConfigurationCloneDeepCopiesScope(t *testing.T) {
+	t.Parallel()
+
+	original := &configuration{
+		ScopedTeamNames: []string{"engineering"},
+		scopedTeamIDs:   map[string]struct{}{"team-eng": {}},
+	}
+	clone := original.Clone()
+
+	clone.ScopedTeamNames[0] = "sales"
+	clone.scopedTeamIDs["team-sales"] = struct{}{}
+
+	if original.ScopedTeamNames[0] != "engineering" {
+		t.Fatalf("Clone did not deep-copy ScopedTeamNames; original mutated to %v", original.ScopedTeamNames)
+	}
+	if _, leaked := original.scopedTeamIDs["team-sales"]; leaked {
+		t.Fatal("Clone did not deep-copy scopedTeamIDs; original mutated")
 	}
 }

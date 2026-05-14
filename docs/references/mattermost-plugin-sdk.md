@@ -10,8 +10,8 @@ Sources:
 ## Purpose In This Plugin
 
 The server plugin intercepts Mattermost actions, builds a policy request, and
-delegates allow/deny decisions to TDI. The webapp plugin adds the channel
-classification RHS flow.
+delegates allow/deny decisions to TDI. The webapp adds the channel
+classification right-hand sidebar and the team-scoping admin-console field.
 
 ## Server SDK Areas To Track
 

@@ -58,12 +58,28 @@ type configuration struct {
 	// MattermostAPIToken is used for REST calls to Mattermost (e.g. access control policy search/assign).
 	// Required for the classify-channel feature. Use a Personal Access Token or System Admin token.
 	MattermostAPIToken string
+	// ScopedTeamNames is the list of team URL slugs (Name) this plugin's policy
+	// enforcement is restricted to. Empty / nil means apply to all teams.
+	ScopedTeamNames []string
+
+	// scopedTeamIDs is the resolved set of team IDs corresponding to
+	// ScopedTeamNames, populated in OnConfigurationChange. Empty when
+	// ScopedTeamNames is empty (the "all teams" case).
+	scopedTeamIDs map[string]struct{}
 }
 
-// Clone shallow copies the configuration. Your implementation may require a deep copy if
-// your configuration has reference types.
+// Clone produces a deep copy safe to mutate without affecting the original.
 func (c *configuration) Clone() *configuration {
-	var clone = *c
+	clone := *c
+	if c.ScopedTeamNames != nil {
+		clone.ScopedTeamNames = append([]string(nil), c.ScopedTeamNames...)
+	}
+	if c.scopedTeamIDs != nil {
+		clone.scopedTeamIDs = make(map[string]struct{}, len(c.scopedTeamIDs))
+		for id := range c.scopedTeamIDs {
+			clone.scopedTeamIDs[id] = struct{}{}
+		}
+	}
 	return &clone
 }
 
@@ -121,9 +137,48 @@ func (p *Plugin) OnConfigurationChange() error {
 		return errors.Wrap(err, "invalid plugin configuration")
 	}
 
+	p.resolveScopedTeams(configuration)
+
 	p.setConfiguration(configuration)
 
 	return nil
+}
+
+// resolveScopedTeams normalises ScopedTeamNames and resolves each name to a
+// team ID via the Mattermost API. Unknown teams are logged and skipped so a
+// typo doesn't break the entire plugin. Mutates configuration in place.
+func (p *Plugin) resolveScopedTeams(configuration *configuration) {
+	configuration.scopedTeamIDs = nil
+
+	seen := make(map[string]struct{})
+	normalised := make([]string, 0, len(configuration.ScopedTeamNames))
+	for _, raw := range configuration.ScopedTeamNames {
+		name := strings.ToLower(strings.TrimSpace(raw))
+		if name == "" {
+			continue
+		}
+		if _, dup := seen[name]; dup {
+			continue
+		}
+		seen[name] = struct{}{}
+		normalised = append(normalised, name)
+	}
+	configuration.ScopedTeamNames = normalised
+
+	if len(normalised) == 0 {
+		return
+	}
+
+	ids := make(map[string]struct{}, len(normalised))
+	for _, name := range normalised {
+		team, appErr := p.API.GetTeamByName(name)
+		if appErr != nil || team == nil {
+			p.logWarn("Scoped team name not found; ignoring", "team_name", name)
+			continue
+		}
+		ids[team.Id] = struct{}{}
+	}
+	configuration.scopedTeamIDs = ids
 }
 
 // validateConfiguration validates the configuration and returns an error if it is invalid.

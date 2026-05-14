@@ -40,6 +40,11 @@ type Plugin struct {
 	router            *http.ServeMux
 	botUserIDValue    string
 	botUserIDLock     sync.RWMutex
+
+	// channelTeamCache memoises channel ID → team ID lookups for team-scoping
+	// checks. Channels cannot migrate teams in Mattermost, so entries are
+	// effectively immutable once cached.
+	channelTeamCache sync.Map
 }
 
 // FileAttachmentInfo describes an attached file for policy decisions
@@ -111,6 +116,10 @@ func (p *Plugin) MessageWillBePosted(c *plugin.Context, post *model.Post) (*mode
 
 	// Skip if message policy is disabled
 	if !config.EnableMessagePolicy {
+		return post, ""
+	}
+
+	if !p.channelInScope(post.ChannelId, post.UserId) {
 		return post, ""
 	}
 
@@ -191,6 +200,10 @@ func (p *Plugin) UserHasJoinedChannel(c *plugin.Context, channelMember *model.Ch
 
 	// Skip if channel join policy is disabled
 	if !config.EnableChannelJoinPolicy {
+		return
+	}
+
+	if !p.channelInScope(channelMember.ChannelId, channelMember.UserId) {
 		return
 	}
 
@@ -517,6 +530,10 @@ func (p *Plugin) MessageWillBeUpdated(c *plugin.Context, newPost, oldPost *model
 		return newPost, ""
 	}
 
+	if !p.channelInScope(newPost.ChannelId, newPost.UserId) {
+		return newPost, ""
+	}
+
 	// Get user info
 	user, err := p.API.GetUser(newPost.UserId)
 	if err != nil {
@@ -586,6 +603,10 @@ func (p *Plugin) MessageHasBeenDeleted(c *plugin.Context, post *model.Post) {
 		return
 	}
 
+	if !p.channelInScope(post.ChannelId, post.UserId) {
+		return
+	}
+
 	user, err := p.API.GetUser(post.UserId)
 	if err != nil {
 		p.API.LogError("Failed to get user for message delete audit", "error", err.Error())
@@ -631,6 +652,13 @@ func (p *Plugin) FileWillBeUploaded(c *plugin.Context, info *model.FileInfo, fil
 
 	// Skip if file upload policy is disabled
 	if !config.EnableFileUploadPolicy {
+		io.Copy(output, file)
+		return info, ""
+	}
+
+	// Out-of-scope uploads are still copied through unchanged — refusing to
+	// pipe bytes would silently drop the upload.
+	if !p.channelInScope(info.ChannelId, info.CreatorId) {
 		io.Copy(output, file)
 		return info, ""
 	}
@@ -763,6 +791,10 @@ func (p *Plugin) UserWillLogIn(c *plugin.Context, user *model.User) string {
 		return ""
 	}
 
+	if !p.userInScope(user.Id) {
+		return ""
+	}
+
 	// Exempt system admins if configured
 	if config.ExemptSystemAdmins && user.IsSystemAdmin() {
 		if config.EnableDebugLogging {
@@ -806,6 +838,17 @@ func (p *Plugin) ChannelHasBeenCreated(c *plugin.Context, channel *model.Channel
 
 	// Skip if channel creation policy is disabled
 	if !config.EnableChannelCreationPolicy {
+		return
+	}
+
+	// New channel — TeamId already on the model, no need for channelInScope's
+	// cache lookup. DM/Group DMs have empty TeamId; fall back to the creator's
+	// team membership so the behaviour matches channelInScope.
+	if channel.TeamId == "" {
+		if !p.userInScope(channel.CreatorId) {
+			return
+		}
+	} else if !config.teamInScope(channel.TeamId) {
 		return
 	}
 
@@ -900,6 +943,9 @@ func (p *Plugin) ReactionHasBeenAdded(c *plugin.Context, reaction *model.Reactio
 	if err != nil {
 		return
 	}
+	if !p.channelInScope(post.ChannelId, reaction.UserId) {
+		return
+	}
 	channel, _ := p.API.GetChannel(post.ChannelId)
 	channelName := ""
 	channelHeader := ""
@@ -930,6 +976,15 @@ func (p *Plugin) ReactionHasBeenRemoved(c *plugin.Context, reaction *model.React
 	if !config.EnableReactionPolicy {
 		return
 	}
+	// Reaction remove only has a post ID — resolve the post to a channel for
+	// scoping. If the post is gone (e.g. already deleted), skip silently.
+	post, postErr := p.API.GetPost(reaction.PostId)
+	if postErr != nil || post == nil {
+		return
+	}
+	if !p.channelInScope(post.ChannelId, reaction.UserId) {
+		return
+	}
 	policyReq := map[string]interface{}{
 		"user_id":    reaction.UserId,
 		"post_id":    reaction.PostId,
@@ -943,6 +998,9 @@ func (p *Plugin) ReactionHasBeenRemoved(c *plugin.Context, reaction *model.React
 func (p *Plugin) UserHasBeenCreated(c *plugin.Context, user *model.User) {
 	config := p.getConfiguration()
 	if !config.EnableUserCreatedPolicy {
+		return
+	}
+	if !p.userInScope(user.Id) {
 		return
 	}
 	policyReq := map[string]interface{}{
@@ -959,6 +1017,9 @@ func (p *Plugin) UserHasBeenCreated(c *plugin.Context, user *model.User) {
 func (p *Plugin) UserHasJoinedTeam(c *plugin.Context, teamMember *model.TeamMember, actor *model.User) {
 	config := p.getConfiguration()
 	if !config.EnableTeamJoinPolicy {
+		return
+	}
+	if !config.teamInScope(teamMember.TeamId) {
 		return
 	}
 	user, err := p.API.GetUser(teamMember.UserId)
@@ -997,6 +1058,9 @@ func (p *Plugin) UserHasLeftTeam(c *plugin.Context, teamMember *model.TeamMember
 	if !config.EnableUserLeftTeamPolicy {
 		return
 	}
+	if !config.teamInScope(teamMember.TeamId) {
+		return
+	}
 	team, _ := p.API.GetTeam(teamMember.TeamId)
 	teamName := ""
 	if team != nil {
@@ -1015,6 +1079,9 @@ func (p *Plugin) UserHasLeftTeam(c *plugin.Context, teamMember *model.TeamMember
 func (p *Plugin) UserHasLeftChannel(c *plugin.Context, channelMember *model.ChannelMember, actor *model.User) {
 	config := p.getConfiguration()
 	if !config.EnableUserLeftChannelPolicy {
+		return
+	}
+	if !p.channelInScope(channelMember.ChannelId, channelMember.UserId) {
 		return
 	}
 	channel, _ := p.API.GetChannel(channelMember.ChannelId)
@@ -1040,6 +1107,9 @@ func (p *Plugin) UserHasLeftChannel(c *plugin.Context, channelMember *model.Chan
 func (p *Plugin) MessageHasBeenPosted(c *plugin.Context, post *model.Post) {
 	config := p.getConfiguration()
 	if !config.EnableMessagePostedPolicy {
+		return
+	}
+	if !p.channelInScope(post.ChannelId, post.UserId) {
 		return
 	}
 	user, err := p.API.GetUser(post.UserId)
@@ -1068,6 +1138,9 @@ func (p *Plugin) MessageHasBeenPosted(c *plugin.Context, post *model.Post) {
 func (p *Plugin) MessageHasBeenUpdated(c *plugin.Context, newPost, oldPost *model.Post) {
 	config := p.getConfiguration()
 	if !config.EnableMessageUpdatedPolicy {
+		return
+	}
+	if !p.channelInScope(newPost.ChannelId, newPost.UserId) {
 		return
 	}
 	user, err := p.API.GetUser(newPost.UserId)
@@ -1099,6 +1172,9 @@ func (p *Plugin) UserHasLoggedIn(c *plugin.Context, user *model.User) {
 	if !config.EnableUserLoggedInPolicy {
 		return
 	}
+	if !p.userInScope(user.Id) {
+		return
+	}
 	policyReq := map[string]interface{}{
 		"user_id":         user.Id,
 		"username":        user.Username,
@@ -1119,14 +1195,22 @@ func (p *Plugin) MessagesWillBeConsumed(posts []*model.Post) []*model.Post {
 		return posts
 	}
 	postIDs := make([]string, 0, len(posts))
+	scoped := len(config.scopedTeamIDs) > 0
 	for _, post := range posts {
-		if post != nil && post.Id != "" {
-			postIDs = append(postIDs, post.Id)
+		if post == nil || post.Id == "" {
+			continue
 		}
+		if scoped && !p.channelInScope(post.ChannelId, post.UserId) {
+			continue
+		}
+		postIDs = append(postIDs, post.Id)
+	}
+	if len(postIDs) == 0 {
+		return posts
 	}
 	policyReq := map[string]interface{}{
 		"post_ids":   postIDs,
-		"post_count": len(posts),
+		"post_count": len(postIDs),
 		"action":     "messages_consumed",
 	}
 	_, _ = p.checkGenericPolicy(policyReq, "messages/consumed")
@@ -1137,6 +1221,9 @@ func (p *Plugin) MessagesWillBeConsumed(posts []*model.Post) []*model.Post {
 func (p *Plugin) UserHasBeenDeactivated(c *plugin.Context, user *model.User) {
 	config := p.getConfiguration()
 	if !config.EnableUserDeactivatedPolicy {
+		return
+	}
+	if !p.userInScope(user.Id) {
 		return
 	}
 	policyReq := map[string]interface{}{
@@ -1154,6 +1241,9 @@ func (p *Plugin) UserHasBeenDeactivated(c *plugin.Context, user *model.User) {
 func (p *Plugin) NotificationWillBePushed(pushNotification *model.PushNotification, userID string) (*model.PushNotification, string) {
 	config := p.getConfiguration()
 	if !config.EnablePushNotificationPolicy {
+		return nil, ""
+	}
+	if !p.channelInScope(pushNotification.ChannelId, userID) {
 		return nil, ""
 	}
 	policyReq := map[string]interface{}{
@@ -1197,6 +1287,9 @@ func (p *Plugin) ConfigurationWillBeSaved(newCfg *model.Config) (*model.Config, 
 func (p *Plugin) OnSAMLLogin(c *plugin.Context, user *model.User, assertion *saml2.AssertionInfo) error {
 	config := p.getConfiguration()
 	if !config.EnableSAMLLoginPolicy {
+		return nil
+	}
+	if !p.userInScope(user.Id) {
 		return nil
 	}
 	policyReq := map[string]interface{}{
@@ -1315,6 +1408,12 @@ func (p *Plugin) checkTDIPolicy(req interface{}, policyPath string) (bool, strin
 func (p *Plugin) logError(msg string, keyValuePairs ...interface{}) {
 	if p.API != nil {
 		p.API.LogError(msg, keyValuePairs...)
+	}
+}
+
+func (p *Plugin) logWarn(msg string, keyValuePairs ...interface{}) {
+	if p.API != nil {
+		p.API.LogWarn(msg, keyValuePairs...)
 	}
 }
 

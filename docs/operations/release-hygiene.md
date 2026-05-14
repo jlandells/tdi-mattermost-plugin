@@ -24,34 +24,21 @@ make verify
 
 This executes:
 
-- `go test ./...`
+- `go test -race ./...`
 - `npm ci`
 - `npm run build` in `webapp/`
 
 ## Packaging
 
-Create the public distributable Mattermost plugin bundle with:
+Create the distributable Mattermost plugin bundle with:
 
 ```bash
 make bundle
 ```
 
-The public bundle is server-only. The Makefile removes the `webapp` manifest
-entry from the packaged `plugin.json` and does not include `webapp/dist/main.js`.
-The bundle is written to `dist/` and should be published as a release artifact,
-not committed to Git.
-
-For internal deployments that need the optional Mattermost webapp:
-
-```bash
-make bundle INCLUDE_WEBAPP=true
-```
-
-Internal webapp bundles use a distinct filename:
-
-```text
-dist/com.archtis.mattermost-policy-plugin-<version>-webapp.tar.gz
-```
+The bundle contains the Linux server binaries (amd64 + arm64), the webapp
+bundle, and `plugin.json`. It is written to `dist/` and should be published as
+a release artifact, not committed to Git.
 
 CI writes `dist/SHA256SUMS` beside bundle artifacts so releases can be verified
 after download.
@@ -62,9 +49,8 @@ This repository is configured for GitHub Actions:
 
 - `.github/workflows/ci.yml` runs verification on pull requests and pushes to
   `main`, `master`, and `develop`.
-- `.github/workflows/ci.yml` also builds the public server-only Mattermost
-  plugin bundle and uploads the `.tar.gz` plus `SHA256SUMS` as workflow
-  artifacts.
+- `.github/workflows/ci.yml` also builds the plugin bundle and uploads the
+  `.tar.gz` plus `SHA256SUMS` as workflow artifacts.
 - `.github/workflows/release.yml` publishes public GitHub Releases when a tag
   matching `v*` is pushed.
 
@@ -132,6 +118,5 @@ Before making the repository public:
 - Confirm GitHub private vulnerability reporting is enabled or update
   `SECURITY.md` with the approved reporting channel.
 - Confirm `make verify` passes.
-- Confirm `make bundle` creates a server-only public bundle.
-- Confirm `make bundle INCLUDE_WEBAPP=true` still works for internal releases
-  if the optional webapp is needed.
+- Confirm `make bundle` produces a bundle that installs and starts on a target
+  Mattermost server.

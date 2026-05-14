@@ -34,19 +34,14 @@ make verify
 make bundle
 ```
 
-The generated public bundle is written to `dist/` and does not include the
-optional webapp. To build the internal bundle with the Mattermost right-hand
-sidebar UI, run:
-
-```bash
-make bundle INCLUDE_WEBAPP=true
-```
-
-The internal bundle gets a `-webapp` filename suffix:
+The bundle is written to:
 
 ```text
-dist/com.archtis.mattermost-policy-plugin-<version>-webapp.tar.gz
+dist/com.archtis.mattermost-policy-plugin-<version>.tar.gz
 ```
+
+It contains the Linux server binaries (amd64 + arm64), the webapp bundle, and
+`plugin.json`.
 
 ## Policy Endpoints
 
